@@ -29,20 +29,31 @@
       <label class="field"><span>Low threshold</span><input type="range" data-param="threshold1" min="5" max="150"><output></output></label>
       <label class="field"><span>High threshold</span><input type="range" data-param="threshold2" min="20" max="300"><output></output></label>
       <label class="field"><span>Noise smoothing</span><input type="range" data-param="smoothing" min="5" max="80"><output></output></label>
+      <label class="field"><span>Smoothing filter</span><select data-param="smoothing_method"><option value="bilateral">Bilateral</option><option value="gaussian">Gaussian</option><option value="median">Median</option><option value="none">Off</option></select></label>
+      <label class="field"><span>Contrast method</span><select data-param="contrast_method"><option value="percentile">Auto levels</option><option value="histogram">Histogram equalization</option><option value="none">Off</option></select></label>
+      <label class="field"><span>Edge method</span><select data-param="edge_method"><option value="canny">Canny</option><option value="sobel">Sobel</option><option value="laplacian">Laplacian</option><option value="threshold">Adaptive threshold</option></select></label>
+      <label class="field"><span>Morphology</span><select data-param="morphology"><option value="none">Off</option><option value="open">Open (remove noise)</option><option value="close">Close (join gaps)</option></select></label>
+      <label class="field"><span>Rotation</span><input type="range" data-param="rotation" min="0" max="100" step="1"><output></output></label>
       <label class="field"><span>Clean-up</span><input type="range" data-param="cleanup" min="0" max="60"><output></output></label>
       <label class="field"><span>Line weight</span><input type="range" data-param="thickness" min="1" max="3"><output></output></label>
       <label class="field"><span>Auto contrast</span><input type="checkbox" data-param="auto_contrast"></label>
       <label class="field"><span>Proportion grid</span><select data-param="grid"><option value="0">Off</option><option value="3">3 × 3</option><option value="4">4 × 4</option><option value="6">6 × 6</option><option value="8">8 × 8</option></select></label>
       <h3 style="margin-top:18px">Output style</h3><div class="styles">{% for key, name in styles.items() %}<button data-style="{{ key }}" aria-pressed="false">{{ name }}</button>{% endfor %}</div>
+      <label class="field neon-options" data-for-style="neon" hidden><span>Neon colour</span><select data-param="neon_color"><option value="magenta">Magenta</option><option value="cyan">Cyan</option><option value="green">Green</option><option value="orange">Orange</option><option value="yellow">Yellow</option><option value="blue">Blue</option></select></label>
       <div class="drawing" data-for-style="drawing" hidden><p><b>Drawing guide.</b> Pause the video to hold a frame, turn on a grid, then copy the shapes square by square. Lower the shading to see only the outlines.</p>
 <label class="field"><span>Shading</span><input type="range" data-param="shading" min="0" max="100"><output></output></label></div>
     </div>
-    <div class="panel"><h3>Under the hood</h3><div class="pipeline">
-      <div class="stage"><img alt="Grayscale stage"><b>Grayscale</b><span>One brightness value per pixel</span></div>
-      <div class="stage"><img alt="Bilateral filter stage"><b>Bilateral filter</b><span>Removes noise, keeps edges</span></div>
-      <div class="stage"><img alt="Sobel stage"><b>Sobel gradient</b><span>Measures how fast brightness changes</span></div>
-      <div class="stage"><img alt="Canny stage"><b>Canny edges</b><span>Thin lines linked by thresholds</span></div></div></div>
-  </div>
+    <div class="panel"><h3>Under the hood</h3>
+      <label class="field"><span>Inspect stage</span><select id="stageSelect"><option value="all">All stages</option><option value="0">Grayscale</option><option value="1">Contrast</option><option value="2">Smoothing</option><option value="3">Sobel gradient</option><option value="4">Threshold</option><option value="5">Edge map</option><option value="6">Morphology</option><option value="7">Contours</option></select></label>
+      <div class="pipeline">
+      <div class="stage"><img alt="Grayscale stage"><b>Grayscale</b><span>Convert colour to intensity values</span></div>
+      <div class="stage"><img alt="Contrast stage"><b>Contrast</b><span>Auto levels or histogram equalization</span></div>
+      <div class="stage"><img alt="Smoothing stage"><b>Smoothing</b><span>Bilateral, Gaussian, median, or off</span></div>
+      <div class="stage"><img alt="Sobel gradient stage"><b>Sobel gradient</b><span>Measure brightness changes in X and Y</span></div>
+      <div class="stage"><img alt="Threshold stage"><b>Threshold</b><span>Separate foreground and background</span></div>
+      <div class="stage"><img alt="Edge map stage"><b>Edge map</b><span>Canny, Sobel, Laplacian, or adaptive</span></div>
+      <div class="stage"><img alt="Morphology stage"><b>Morphology</b><span>Open or close small gaps in edges</span></div>
+      <div class="stage"><img alt="Contours stage"><b>Contours</b><span>Trace connected boundary curves</span></div></div></div> </div>
   <div class="exportbar"><p>Export the current frame as vector paths for Figma, Illustrator or a plotter. Pause first to export an exact frame.</p>
     <div class="actions"><button class="btn btn--ghost" id="saveBtn">Save to gallery</button><button class="btn" id="svgBtn">Export SVG</button></div></div>
 </div>

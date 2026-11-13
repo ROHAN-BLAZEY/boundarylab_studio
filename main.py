@@ -137,6 +137,7 @@ async def stream(ws: WebSocket):
     """Client sends JSON text (params) and JPEG bytes (frames); server replies with the styled frame."""
     await ws.accept()
     params = processor.Params()
+    global phone_params
     loop = asyncio.get_running_loop()
     try:
         while True:
@@ -145,24 +146,89 @@ async def stream(ws: WebSocket):
                 break
             if msg.get("text"):
                 d = json.loads(msg["text"])
-                params = processor.Params.from_dict(d)
-                params.stages = bool(d.get("stages"))
+                if d.get("action") not in ("subscribe_phone", "unsubscribe_phone"):
+                    params = processor.Params.from_dict(d)
+                    params.stages = bool(d.get("stages"))
+                    try:
+                        params.stage_index = int(d.get("stage_index") if d.get("stage_index") is not None else -1)
+                    except (TypeError, ValueError):
+                        params.stage_index = -1
+                    if params.stage_index not in range(8):
+                        params.stage_index = -1
+                    params.inspect_stage = params.stage_index
+                    phone_params = params
             elif msg.get("bytes"):
                 try:
                     res = await loop.run_in_executor(pool, lambda b=msg["bytes"], p=params: (processor.run(decode(b), p)))
                 except ValueError:
                     continue
                 reply = {"out": processor.to_data_url(res.out), "w": res.out.shape[1], "h": res.out.shape[0]}
-                if getattr(params, "stages", False):
-                    reply["stages"] = [processor.to_data_url(res.stages[k], 60) for k in ("gray", "bilateral", "sobel", "canny")]
+                if getattr(params, "stages", False) and getattr(params, "stage_index", -1) in range(8):
+                    key = ("grayscale", "contrast", "smoothed", "sobel", "threshold", "edges", "morphology", "contours")[params.stage_index]
+                    reply["stage_index"] = params.stage_index
+                    reply["stages"] = [processor.to_data_url(res.stages[key], 55)]
                 await ws.send_text(json.dumps(reply))
     except WebSocketDisconnect:
         pass
 
 
+@app.websocket("/ws/camera/feed")
+async def camera_feed(ws: WebSocket):
+    await ws.accept()
+    loop = asyncio.get_running_loop()
+    try:
+        while True:
+            msg = await ws.receive()
+            if msg.get("type") == "websocket.disconnect": break
+            if msg.get("text"):
+                if json.loads(msg["text"]).get("type") == "capture" and getattr(ws, "last_frame", None) is not None:
+                    await save_capture(ws.last_frame, {"source": "phone"}, phone_params)
+                    await ws.send_text(json.dumps({"event": "captured"}))
+                continue
+            data = msg.get("bytes")
+            if not data: continue
+            try:
+                frame = decode(data)
+                result = await loop.run_in_executor(pool, processor.run, frame, phone_params)
+                ws.last_frame = frame
+                payload = json.dumps({"event": "phone_frame", "src": processor.to_data_url(frame, 62),
+                    "out": processor.to_data_url(result.out, 65), "w": frame.shape[1], "h": frame.shape[0]})
+                for viewer in tuple(viewers):
+                    try: await viewer.send_text(payload)
+                    except Exception: viewers.discard(viewer)
+                await ws.send_text(json.dumps({"event": "frame"}))
+            except (ValueError, cv2.error): continue
+    except WebSocketDisconnect: pass
+
+
+async def save_capture(image: np.ndarray, body: dict, p: processor.Params):
+    result = await asyncio.get_running_loop().run_in_executor(pool, processor.run, image, p)
+    uid = uuid.uuid4().hex[:10]
+    cv2.imwrite(str(DATA / f"{uid}.jpg"), image, [cv2.IMWRITE_JPEG_QUALITY, 92])
+    cv2.imwrite(str(DATA / f"{uid}.png"), result.out)
+    (DATA / f"{uid}.svg").write_text(vectorizer.edges_to_svg(result.edges, p.style, p.thickness, neon_color=p.neon_color), encoding="utf-8")
+    item = {"id": uid, "source": "phone" if body.get("source") == "phone" else "laptop",
+            "style": STYLE_NAMES[p.style], "time": time.strftime("%I:%M %p").lstrip("0").lower(),
+            "png": f"/api/gallery/{uid}/png", "svg": f"/api/gallery/{uid}/svg",
+            "source_image": f"/api/gallery/{uid}/source"}
+    GALLERY.insert(0, item); del GALLERY[48:]
+    for v in tuple(viewers):
+        try: await v.send_text(json.dumps({"event": "new", "item": item}))
+        except Exception: viewers.discard(v)
+    return item
+
+
 # -------------------------------------------------------------------- gallery
 GALLERY = []
+for saved in sorted(DATA.glob("*.png"), key=lambda path: path.stat().st_mtime, reverse=True)[:48]:
+    uid = saved.stem
+    if (DATA / f"{uid}.svg").exists():
+        GALLERY.append({"id": uid, "source": "laptop", "style": "Saved capture",
+            "time": time.strftime("%I:%M %p").lstrip("0").lower(),
+            "png": f"/api/gallery/{uid}/png", "svg": f"/api/gallery/{uid}/svg",
+            "source_image": f"/api/gallery/{uid}/source" if (DATA / f"{uid}.jpg").exists() else f"/api/gallery/{uid}/png"})
 viewers = set()
+phone_params = processor.Params()
 
 
 class FrameIn(BaseModel):
@@ -175,7 +241,7 @@ class FrameIn(BaseModel):
 async def svg(body: FrameIn):
     p = processor.Params.from_dict(body.params)
     res = await asyncio.get_running_loop().run_in_executor(pool, processor.run, decode_data_url(body.image), p)
-    text = vectorizer.edges_to_svg(res.edges, p.style, p.thickness)
+    text = vectorizer.edges_to_svg(res.edges, p.style, p.thickness, neon_color=p.neon_color)
     return Response(text, media_type="image/svg+xml",
                     headers={"Content-Disposition": 'attachment; filename="edgeseg.svg"'})
 
@@ -183,21 +249,7 @@ async def svg(body: FrameIn):
 @app.post("/api/capture")
 async def capture(body: FrameIn):
     p = processor.Params.from_dict(body.params)
-    res = await asyncio.get_running_loop().run_in_executor(pool, processor.run, decode_data_url(body.image), p)
-    uid = uuid.uuid4().hex[:10]
-    cv2.imwrite(str(DATA / f"{uid}.png"), res.out)
-    (DATA / f"{uid}.svg").write_text(vectorizer.edges_to_svg(res.edges, p.style, p.thickness))
-    item = {"id": uid, "source": "phone" if body.source == "phone" else "laptop",
-            "style": STYLE_NAMES[p.style], "time": time.strftime("%I:%M %p").lstrip("0").lower(),
-            "png": f"/api/gallery/{uid}/png", "svg": f"/api/gallery/{uid}/svg"}
-    GALLERY.insert(0, item)
-    del GALLERY[48:]
-    for v in list(viewers):
-        try:
-            await v.send_text(json.dumps({"event": "new", "item": item}))
-        except Exception:
-            viewers.discard(v)
-    return item
+    return await save_capture(decode_data_url(body.image), body.dict(), p)
 
 
 @app.get("/api/gallery")
@@ -205,11 +257,33 @@ async def gallery():
     return GALLERY
 
 
+@app.delete("/api/gallery/{uid}")
+async def delete_gallery_item(uid: str):
+    if not uid.isalnum() or not any(item["id"] == uid for item in GALLERY): raise HTTPException(404)
+    for kind in ("png", "svg", "jpg"): (DATA / f"{uid}.{kind}").unlink(missing_ok=True)
+    GALLERY[:] = [item for item in GALLERY if item["id"] != uid]
+    for v in tuple(viewers):
+        try: await v.send_text(json.dumps({"event": "delete", "id": uid}))
+        except Exception: viewers.discard(v)
+    return {"deleted": uid}
+
+
 @app.get("/api/gallery/{uid}/{kind}")
 async def gallery_file(uid: str, kind: str):
-    if kind not in ("png", "svg") or not uid.isalnum() or not (DATA / f"{uid}.{kind}").exists():
+    if kind not in ("png", "svg", "source", "jpeg", "jpg", "webp") or not uid.isalnum():
         raise HTTPException(404)
-    return FileResponse(DATA / f"{uid}.{kind}")
+    path = DATA / f"{uid}.{'jpg' if kind == 'source' else kind}"
+    if kind in ("jpeg", "jpg", "webp"):
+        stored = DATA / f"{uid}.png"
+        if not stored.exists(): raise HTTPException(404)
+        image = cv2.imread(str(stored), cv2.IMREAD_COLOR)
+        ext = ".webp" if kind == "webp" else ".jpg"
+        ok, encoded = cv2.imencode(ext, image)
+        if not ok: raise HTTPException(500)
+        media = "image/webp" if ext == ".webp" else "image/jpeg"
+        return Response(encoded.tobytes(), media_type=media)
+    if not path.exists(): raise HTTPException(404)
+    return FileResponse(path)
 
 
 @app.websocket("/ws/gallery")

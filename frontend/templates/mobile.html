@@ -49,10 +49,16 @@
     <label class="field"><span>Proportion grid</span><select data-param="grid"><option value="0">Off</option><option value="3">3 × 3</option><option value="4">4 × 4</option><option value="6">6 × 6</option><option value="8">8 × 8</option></select></label>
     <div class="drawing" data-for-style="drawing" hidden><p><b>Drawing guide.</b> Pause the video to hold a frame, turn on a grid, then copy the shapes square by square. Lower the shading to see only the outlines.</p>
 <label class="field"><span>Shading</span><input type="range" data-param="shading" min="0" max="100"><output></output></label></div>
+    <label class="field"><span>Rotation</span><input type="range" data-param="rotation" min="0" max="100"><output></output></label>
+    <label class="field"><span>Filter</span><select data-param="smoothing_method"><option value="bilateral">Bilateral</option><option value="gaussian">Gaussian</option><option value="median">Median</option><option value="none">Off</option></select></label>
+    <label class="field"><span>Edge method</span><select data-param="edge_method"><option value="canny">Canny</option><option value="sobel">Sobel</option><option value="laplacian">Laplacian</option><option value="threshold">Adaptive threshold</option></select></label>
     <label class="field"><span>Clean-up</span><input type="range" data-param="cleanup" min="0" max="60"><output></output></label>
     <label class="field"><span>Low threshold</span><input type="range" data-param="threshold1" min="5" max="150"><output></output></label>
     <label class="field"><span>High threshold</span><input type="range" data-param="threshold2" min="20" max="300"><output></output></label>
     <label class="field"><span>Auto contrast</span><input type="checkbox" data-param="auto_contrast"></label>
+    <label class="field"><span>Contrast</span><select data-param="contrast_method"><option value="percentile">Auto levels</option><option value="histogram">Histogram</option><option value="none">Off</option></select></label>
+    <label class="field"><span>Morphology</span><select data-param="morphology"><option value="none">Off</option><option value="open">Open</option><option value="close">Close</option></select></label>
+    <label class="field neon-options" data-for-style="neon" hidden><span>Neon colour</span><select data-param="neon_color"><option value="magenta">Magenta</option><option value="cyan">Cyan</option><option value="green">Green</option><option value="orange">Orange</option><option value="yellow">Yellow</option><option value="blue">Blue</option></select></label>
     <span id="styleName" hidden></span>
   </div></div></div>
 <section class="gallery"><h2>Shared gallery <small id="galCount" style="font-size:15px;color:var(--mute);font-weight:600">0</small></h2>

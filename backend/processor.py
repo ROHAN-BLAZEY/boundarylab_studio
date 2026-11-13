@@ -21,6 +21,13 @@ class Params:
     style: str = "classic"
     shading: int = 60         # drawing guide: pencil shading strength 0-100
     grid: int = 0             # proportion grid, 0 = off, else N x N
+    rotation: int = 0         # clockwise rotation in degrees
+    contrast_method: str = "percentile"
+    smoothing_method: str = "bilateral"
+    edge_method: str = "canny"
+    morphology: str = "none"
+    neon_color: str = "magenta"
+    inspect_stage: int = -1
 
     @classmethod
     def from_dict(cls, d):
@@ -37,6 +44,12 @@ class Params:
         p.thickness = int(np.clip(p.thickness, 1, 4))
         if p.style not in styles.RENDERERS:
             p.style = "classic"
+        p.rotation = int(np.clip(p.rotation, 0, 100))
+        p.contrast_method = p.contrast_method if p.contrast_method in ("none", "percentile", "histogram") else "percentile"
+        p.smoothing_method = p.smoothing_method if p.smoothing_method in ("none", "bilateral", "gaussian", "median") else "bilateral"
+        p.edge_method = p.edge_method if p.edge_method in ("canny", "sobel", "laplacian", "threshold") else "canny"
+        p.morphology = p.morphology if p.morphology in ("none", "open", "close") else "none"
+        p.neon_color = p.neon_color if p.neon_color in styles.NEON_COLORS else "magenta"
         return p
 
 
@@ -71,21 +84,55 @@ def drop_small(edges, min_px):
 
 def run(bgr, p: Params) -> Result:
     bgr = prepare(bgr)
-    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
-    if p.auto_contrast:
+    if p.rotation:
+        h, w = bgr.shape[:2]
+        matrix = cv2.getRotationMatrix2D((w / 2, h / 2), -p.rotation, 1.0)
+        bgr = cv2.warpAffine(bgr, matrix, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+    gray_raw = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+    gray = gray_raw.copy()
+    if p.auto_contrast and p.contrast_method == "percentile":
         gray = auto_contrast(gray)
-    smooth = cv2.bilateralFilter(gray, 7, max(5, p.smoothing), 5)
+    elif p.auto_contrast and p.contrast_method == "histogram":
+        gray = cv2.equalizeHist(gray)
+    if p.smoothing_method == "bilateral":
+        smooth = cv2.bilateralFilter(gray, 7, max(5, p.smoothing), 5)
+    elif p.smoothing_method == "gaussian":
+        smooth = cv2.GaussianBlur(gray, (5, 5), max(0.5, p.smoothing / 20))
+    elif p.smoothing_method == "median":
+        smooth = cv2.medianBlur(gray, 5)
+    else:
+        smooth = gray
     gx = cv2.Sobel(smooth, cv2.CV_32F, 1, 0, ksize=3)
     gy = cv2.Sobel(smooth, cv2.CV_32F, 0, 1, ksize=3)
     sobel = np.clip(cv2.magnitude(gx, gy) / 4 * 1.6, 0, 255).astype(np.uint8)
-    # Raw Sobel magnitude is ~4x the 0-255 scale the sliders use.
-    edges = cv2.Canny(smooth, p.threshold1 * 4, p.threshold2 * 4, L2gradient=True)
+    if p.edge_method == "sobel":
+        edges = cv2.threshold(sobel, p.threshold1, 255, cv2.THRESH_BINARY)[1]
+    elif p.edge_method == "laplacian":
+        lap = cv2.Laplacian(smooth, cv2.CV_16S, ksize=3)
+        edges = cv2.convertScaleAbs(lap)
+        edges = cv2.threshold(edges, p.threshold1, 255, cv2.THRESH_BINARY)[1]
+    elif p.edge_method == "threshold":
+        edges = cv2.adaptiveThreshold(smooth, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                      cv2.THRESH_BINARY_INV, 11, 2)
+    else:
+        edges = cv2.Canny(smooth, p.threshold1 * 4, p.threshold2 * 4, L2gradient=True)
+    threshold = edges.copy()
     edges = drop_small(edges, p.cleanup)
+    if p.morphology != "none":
+        op = cv2.MORPH_OPEN if p.morphology == "open" else cv2.MORPH_CLOSE
+        edges = cv2.morphologyEx(edges, op, np.ones((3, 3), np.uint8))
+    morph = edges.copy()
     if p.thickness > 1:
         k = 2 * (p.thickness - 1) + 1
         edges = cv2.dilate(edges, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)))
+    contour_view = np.zeros_like(edges)
+    if p.inspect_stage == 7:
+        contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+        cv2.drawContours(contour_view, contours, -1, 255, 1)
     out = styles.render(smooth if p.style == "drawing" else gray, edges, p)
-    return Result(out, edges, {"gray": gray, "bilateral": smooth, "sobel": sobel, "canny": edges})
+    return Result(out, edges, {"grayscale": gray_raw, "contrast": gray, "smoothed": smooth,
+        "sobel": sobel, "threshold": threshold, "edges": edges, "morphology": morph,
+        "contours": contour_view})
 
 
 def to_data_url(img, quality=78):

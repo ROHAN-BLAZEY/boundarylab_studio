@@ -3,6 +3,11 @@ binary edge map and returns a BGR image. PALETTE (RGB) is shared with the vector
 import cv2
 import numpy as np
 
+NEON_COLORS = {
+    "magenta": (255, 60, 200), "cyan": (0, 235, 255), "green": (50, 255, 130),
+    "orange": (255, 130, 20), "yellow": (255, 230, 40), "blue": (60, 120, 255),
+}
+
 STYLE_NAMES = {
     "classic": "Classic outline",
     "blueprint": "Blueprint",
@@ -60,13 +65,14 @@ def sketch(gray, edges, p):
 
 def neon(gray, edges, p):
     c = PALETTE["neon"]
+    fg = NEON_COLORS.get(p.neon_color, NEON_COLORS["magenta"])
     base = _solid(edges.shape, c["bg"]).astype(np.int16)
     glow = np.zeros(base.shape, np.uint8)
-    _lines(glow, edges, c["fg"])
+    _lines(glow, edges, fg)
     wide = cv2.GaussianBlur(glow, (0, 0), 5).astype(np.int16)
     tight = cv2.GaussianBlur(glow, (0, 0), 1.5).astype(np.int16)
     core = np.zeros(base.shape, np.uint8)
-    _lines(core, edges, (255, 220, 245))
+    _lines(core, edges, (255, 255, 255))
     out = base + wide * 2 + tight + glow.astype(np.int16) + (core * 0.55).astype(np.int16)
     return np.clip(out, 0, 255).astype(np.uint8)
 

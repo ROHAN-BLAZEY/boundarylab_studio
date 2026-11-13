@@ -23,7 +23,7 @@ function closeQrModal() {
 class Studio {
   constructor(source) {
     this.source = source;                       // 'laptop' | 'phone'
-    this.params = { style: 'classic', threshold1: 28, threshold2: 75, smoothing: 30, cleanup: 14, thickness: 1, auto_contrast: true, shading: 60, grid: 0 };
+    this.params = { style: 'classic', threshold1: 28, threshold2: 75, smoothing: 30, cleanup: 14, thickness: 1, auto_contrast: true, shading: 60, grid: 0, rotation: 0, contrast_method: 'percentile', smoothing_method: 'bilateral', edge_method: 'canny', morphology: 'none', neon_color: 'magenta' };
     this.cap = document.createElement('canvas');
     this.vid = $('#vid'); this.out = $('#outImg'); this.view = $('#srcView');
     this.stageImgs = $$('.stage img');
@@ -103,7 +103,8 @@ class Studio {
 
   loadFile(file, { label, auto } = {}) {
     if (!file) return;
-    const url = URL.createObjectURL(file);
+    if (this.fileUrl) URL.revokeObjectURL(this.fileUrl);
+    const url = this.fileUrl = URL.createObjectURL(file);
     if (file.type.startsWith('video')) {
       this.stopStream(); this.vid.srcObject = null; this.vid.src = url; this.vid.loop = true; this.vid.play().catch(() => {});
       this.setMode('video', label || file.name); return;
@@ -143,16 +144,21 @@ class Studio {
     $$('[data-param]').forEach(el => {
       const k = el.dataset.param, o = el.parentElement.querySelector('output');
       const read = () => {
-        const v = el.type === 'checkbox' ? el.checked : Number(el.value);
-        this.params[k] = v; if (o) o.textContent = el.value; this.sendParams();
+        const v = el.type === 'checkbox' ? el.checked : (el.type === 'range' || el.type === 'number' ? Number(el.value) : el.value);
+        this.params[k] = v; if (o) o.textContent = k === 'rotation' ? `${el.value}°` : el.value; this.sendParams();
       };
       el.addEventListener('input', read); el.addEventListener('change', read);
       if (el.type === 'checkbox') el.checked = this.params[k]; else el.value = this.params[k];
-      if (o) o.textContent = el.value;
+      if (o) o.textContent = k === 'rotation' ? `${el.value}°` : el.value;
     });
 
     $$('[data-style]').forEach(b => b.addEventListener('click', () => this.setStyle(b.dataset.style)));
     this.setStyle('classic');
+    const stageSelect = $('#stageSelect');
+    if (stageSelect) stageSelect.addEventListener('change', () => {
+      $$('.stage').forEach((el, i) => { el.hidden = stageSelect.value !== 'all' && String(i) !== stageSelect.value; });
+      this.sendParams();
+    });
 
     const on = (id, fn) => { const e = $(id); if (e) e.addEventListener('click', fn); };
     on('#sampleBtn', () => this.useSample());
@@ -287,7 +293,7 @@ class Studio {
             }
             
             if (d.src) {
-              const im = new Image();
+              const im = this.phoneImage || (this.phoneImage = new Image());
               im.onload = () => {
                 const w = d.w || 640, h = d.h || 360;
                 this.cap.width = w; this.cap.height = h;
@@ -317,8 +323,8 @@ class Studio {
 
         // Standard local stream reply
         if (d.out && this.out) this.out.src = d.out;
-        if (d.stages && Array.isArray(d.stages)) {
-          d.stages.forEach((u, i) => { if (this.stageImgs[i] && u) this.stageImgs[i].src = u; });
+        if (d.stages && Array.isArray(d.stages) && this.stageImgs[d.stage_index]) {
+          this.stageImgs[d.stage_index].src = d.stages[0];
         }
         this.frames++;
         const now = performance.now();
@@ -342,7 +348,7 @@ class Studio {
   sendParams() {
     this.dirty = true;
     if (this.ws && this.ws.readyState === 1) {
-      this.ws.send(JSON.stringify({ ...this.params, stages: this.stageImgs.length > 0, source: this.source }));
+      this.ws.send(JSON.stringify({ ...this.params, stages: this.stageImgs.length > 0, stage_index: Number($('#stageSelect')?.value ?? -1), source: this.source }));
     }
   }
 
@@ -371,8 +377,10 @@ class Studio {
     if (!live && !this.dirty) return;
     if ((live || !this.hasFrame) && !this.drawFrame()) return;
     this.last = ts; this.busy = true; this.dirty = false;
-    this.cap.toBlob(b => this.ws && this.ws.readyState === 1 && this.ws.send(b), 'image/jpeg', 0.72);
-    setTimeout(() => { this.busy = false; }, 2500);
+    this.cap.toBlob(b => {
+      if (b && this.ws && this.ws.readyState === 1) this.ws.send(b);
+      else this.busy = false;
+    }, 'image/jpeg', 0.68);
   }
 
   /* ---------- actions ---------- */
@@ -389,11 +397,12 @@ class Studio {
       toast('Nothing to capture yet.'); return;
     }
     try {
-      await fetch('/api/capture', {
+      const response = await fetch('/api/capture', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: this.body()
       });
+      if (!response.ok) throw new Error('Capture failed');
       toast(this.source === 'phone' ? 'Sent to the shared gallery' : 'Saved to the shared gallery');
     } catch (e) {
       toast('Could not reach the server.');
@@ -426,14 +435,34 @@ class Gallery {
       try {
         const m = JSON.parse(e.data);
         if (m.event === 'new' && m.item) {
-          this.items.unshift(m.item);
-          this.render();
+          this.items.unshift(m.item); this.render();
+        } else if (m.event === 'delete') {
+          this.items = this.items.filter(i => i.id !== m.id); this.render();
         }
       } catch (err) {}
     };
     ws.onclose = () => setTimeout(() => new Gallery(root), 2000);
     setInterval(() => ws.readyState === 1 && ws.send('ping'), 20000);
+    this.root.addEventListener('click', e => this.action(e));
     this.render();
+  }
+  async action(e) {
+    const btn = e.target.closest('[data-action]'); if (!btn) return;
+    const item = this.items.find(i => i.id === btn.dataset.id); if (!item) return;
+    if (btn.dataset.action === 'open') { window.open(item.png, '_blank', 'noopener'); return; }
+    if (btn.dataset.action === 'edit') {
+      if (!window.studio) { toast('Open the command center to edit this capture.'); return; }
+      const blob = await fetch(item.source_image || item.png).then(r => r.blob()); window.studio.loadFile(new File([blob], 'gallery-capture.png', {type: blob.type}), {label:'Gallery capture'});
+      window.scrollTo({top:0,behavior:'smooth'}); toast('Capture opened in the editor'); return;
+    }
+    if (btn.dataset.action === 'share') {
+      const url = new URL(item.png, location.href).href;
+      try { if (navigator.share) await navigator.share({title:'EdgeSeg capture',url}); else { await navigator.clipboard.writeText(url); toast('Share link copied'); } } catch (_) {} return;
+    }
+    if (btn.dataset.action === 'delete') {
+      const res = await fetch('/api/gallery/'+encodeURIComponent(item.id), {method:'DELETE'});
+      if (res.ok) { this.items=this.items.filter(i=>i.id!==item.id); this.render(); toast('Capture deleted'); } else toast('Could not delete capture');
+    }
   }
   render() {
     const n = $('#galCount'); if (n) n.textContent = this.items.length;
@@ -445,7 +474,7 @@ class Gallery {
       <article class="gcard">
         <img class="gcard__thumb" alt="Captured outline" src="${i.png || ''}">
         <div class="gcard__meta"><span class="badge badge--${i.source}">${i.source === 'phone' ? 'Phone' : 'Laptop'}</span><small>${i.style} · ${i.time}</small></div>
-        <div class="gcard__acts"><a href="${i.png || '#'}" download="edgeseg-${i.id || 'capture'}.png">PNG</a><a href="${i.svg || '#'}" download="edgeseg-${i.id || 'capture'}.svg">SVG</a></div>
+        <div class="gcard__acts"><details class="download-menu"><summary>Download</summary><div class="download-menu__popup"><a href="/api/gallery/${i.id}/png" download="edgeseg-${i.id}.png">PNG</a><a href="/api/gallery/${i.id}/jpeg" download="edgeseg-${i.id}.jpg">JPEG</a><a href="/api/gallery/${i.id}/webp" download="edgeseg-${i.id}.webp">WebP</a><a href="${i.svg || '#'}" download="edgeseg-${i.id}.svg">SVG</a></div></details><button data-action="open" data-id="${i.id}">Open</button><button data-action="edit" data-id="${i.id}">Edit</button><button data-action="share" data-id="${i.id}">Share</button><button data-action="delete" data-id="${i.id}">Delete</button></div>
       </article>`).join('');
   }
 }

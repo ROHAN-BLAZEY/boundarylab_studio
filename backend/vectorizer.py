@@ -1,13 +1,14 @@
 """Edge map -> SVG. Contours are extracted with OpenCV and simplified with Douglas-Peucker."""
 import cv2
 
-from .styles import PALETTE
+from .styles import PALETTE, NEON_COLORS
 
 
-def edges_to_svg(edges, style="classic", stroke=1.0, scale=3):
+def edges_to_svg(edges, style="classic", stroke=1.0, scale=3, neon_color="magenta"):
     h, w = edges.shape
     c = PALETTE.get(style, PALETTE["classic"])
-    fg, bg = "rgb(%d,%d,%d)" % c["fg"], "rgb(%d,%d,%d)" % c["bg"]
+    color = NEON_COLORS.get(neon_color, NEON_COLORS["magenta"]) if style == "neon" else c["fg"]
+    fg, bg = "rgb(%d,%d,%d)" % color, "rgb(%d,%d,%d)" % c["bg"]
     contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
     parts = []
     for cnt in contours:
