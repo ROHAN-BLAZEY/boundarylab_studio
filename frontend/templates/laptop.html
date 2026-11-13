@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Command center · EdgeSeg Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body data-studio="laptop"><div class="page">
+<nav class="nav"><a class="brand" href="/"><span class="brand__mark"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E9C46A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17c3-9 6-9 8-4s5 3 8-6"/></svg></span>EdgeSeg Studio</a>
+<div class="nav__links"><a href="/laptop" aria-current="page">Command center</a><a href="/mobile" >Phone</a></div></nav>
+<div class="console">
+  <div class="console__bar">
+    <h2>Command center</h2>
+    <span class="chip"><b id="fps">0</b> fps</span><span class="chip" id="status">Connecting</span><span class="chip" id="srcName">Sample video</span>
+    <button class="btn btn--ghost" id="pauseBtn" aria-pressed="false">Pause video</button>
+    <button class="btn btn--ghost" id="sampleBtn" data-src="video" aria-pressed="true">Sample video</button>
+    <button class="btn btn--ghost" id="uploadBtn">Upload</button>
+    <button class="btn btn--ghost" id="phoneCamBtn" data-src="phone" aria-pressed="false">📱 Phone camera <span class="dot" id="laptopPhoneDot"></span></button>
+    <button class="btn btn--ghost" id="qrBtn" title="Connect wireless phone camera">Connect Phone</button>
+    <button class="btn" id="camBtn" data-src="camera" aria-pressed="false">Start camera</button>
+  </div>
+  <div class="panes">
+    <div class="pane"><canvas id="srcView" width="640" height="360"></canvas><span class="pane__tag">Source in grayscale</span></div>
+    <div class="pane"><img id="outImg" alt="Edge segmentation output"><span class="pane__tag" id="styleName">Classic outline</span></div>
+  </div>
+  <div class="split">
+    <div class="panel"><h3>Processing controls</h3>
+      <label class="field"><span>Low threshold</span><input type="range" data-param="threshold1" min="5" max="150"><output></output></label>
+      <label class="field"><span>High threshold</span><input type="range" data-param="threshold2" min="20" max="300"><output></output></label>
+      <label class="field"><span>Noise smoothing</span><input type="range" data-param="smoothing" min="5" max="80"><output></output></label>
+      <label class="field"><span>Clean-up</span><input type="range" data-param="cleanup" min="0" max="60"><output></output></label>
+      <label class="field"><span>Line weight</span><input type="range" data-param="thickness" min="1" max="3"><output></output></label>
+      <label class="field"><span>Auto contrast</span><input type="checkbox" data-param="auto_contrast"></label>
+      <label class="field"><span>Proportion grid</span><select data-param="grid"><option value="0">Off</option><option value="3">3 × 3</option><option value="4">4 × 4</option><option value="6">6 × 6</option><option value="8">8 × 8</option></select></label>
+      <h3 style="margin-top:18px">Output style</h3><div class="styles">{% for key, name in styles.items() %}<button data-style="{{ key }}" aria-pressed="false">{{ name }}</button>{% endfor %}</div>
+      <div class="drawing" data-for-style="drawing" hidden><p><b>Drawing guide.</b> Pause the video to hold a frame, turn on a grid, then copy the shapes square by square. Lower the shading to see only the outlines.</p>
+<label class="field"><span>Shading</span><input type="range" data-param="shading" min="0" max="100"><output></output></label></div>
+    </div>
+    <div class="panel"><h3>Under the hood</h3><div class="pipeline">
+      <div class="stage"><img alt="Grayscale stage"><b>Grayscale</b><span>One brightness value per pixel</span></div>
+      <div class="stage"><img alt="Bilateral filter stage"><b>Bilateral filter</b><span>Removes noise, keeps edges</span></div>
+      <div class="stage"><img alt="Sobel stage"><b>Sobel gradient</b><span>Measures how fast brightness changes</span></div>
+      <div class="stage"><img alt="Canny stage"><b>Canny edges</b><span>Thin lines linked by thresholds</span></div></div></div>
+  </div>
+  <div class="exportbar"><p>Export the current frame as vector paths for Figma, Illustrator or a plotter. Pause first to export an exact frame.</p>
+    <div class="actions"><button class="btn btn--ghost" id="saveBtn">Save to gallery</button><button class="btn" id="svgBtn">Export SVG</button></div></div>
+</div>
+<section class="gallery"><h2>Shared gallery <small id="galCount" style="font-size:15px;color:var(--mute);font-weight:600">0</small></h2>
+<p class="gallery__sub">Everything captured on the laptop or the phone appears here as it happens.</p>
+<div class="gallery__grid" id="galleryGrid"></div></section>
+</div>
+
+<!-- Modal: Connect Phone Camera -->
+<div class="modal-backdrop" id="qrModal">
+  <div class="modal-box">
+    <button class="modal-close" id="qrClose" aria-label="Close modal">&times;</button>
+    <h3 style="margin:0 0 6px;font-size:20px;">Connect Phone Camera</h3>
+    <p style="margin:0 0 14px;color:#cbd5e1;font-size:13px;line-height:1.4;">Scan with your phone camera to stream video live to this dashboard independently.</p>
+    {% if qr_code %}
+    <div class="modal-qr">
+      <img src="{{ qr_code }}" alt="QR Code to connect phone camera">
+    </div>
+    {% endif %}
+    <div class="modal-url">
+      <a href="{{ cam_url }}" target="_blank" id="camLink">{{ cam_url }}</a>
+      <button class="btn btn--forest btn--sm" id="copyUrlBtn">Copy</button>
+    </div>
+    <div class="modal-status" id="modalPhoneStatus">
+      <span class="dot" id="modalPhoneDot"></span>
+      <span id="modalPhoneStatusText">Waiting for phone camera...</span>
+    </div>
+  </div>
+</div>
+
+<video id="vid" muted loop playsinline style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"></video>
+<input type="file" id="fileIn" accept="video/*,image/*" hidden><div class="toast" id="toast" role="status"></div>
+<script src="/static/js/client.js"></script></body></html>

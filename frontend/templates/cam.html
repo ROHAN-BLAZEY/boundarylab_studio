@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Wireless Camera · EdgeSeg Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/style.css">
+<style>
+  body {
+    background: #0d1210;
+    color: #e9ece8;
+    overflow-x: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .cam-page {
+    max-width: 540px;
+    margin: 0 auto;
+    padding: 14px 16px 36px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .cam-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+  }
+  .cam-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 99px;
+    background: rgba(255,255,255,0.08);
+    font-size: 12px;
+    font-weight: 700;
+    color: #cbd5e1;
+  }
+  .cam-status .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #f59e0b;
+  }
+  .cam-status.online .dot {
+    background: #4ade80;
+    box-shadow: 0 0 8px #4ade80;
+  }
+  .cam-status.online {
+    color: #4ade80;
+    background: rgba(74,222,128,0.12);
+  }
+  .cam-viewport-card {
+    position: relative;
+    border-radius: 28px;
+    overflow: hidden;
+    background: #000;
+    aspect-ratio: 3/4;
+    max-height: 64vh;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(255,255,255,0.1);
+  }
+  .cam-viewport-card video,
+  .cam-viewport-card img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .cam-hud-top {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    right: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 5;
+    pointer-events: none;
+  }
+  .cam-pill {
+    padding: 5px 10px;
+    border-radius: 99px;
+    background: rgba(15,23,20,0.72);
+    backdrop-filter: blur(8px);
+    font-size: 11px;
+    font-weight: 700;
+    color: #e9c46a;
+    border: 1px solid rgba(255,255,255,0.15);
+    letter-spacing: 0.02em;
+  }
+  .cam-hud-bottom {
+    position: absolute;
+    bottom: 12px;
+    left: 12px;
+    right: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 5;
+  }
+  .cam-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 4px;
+  }
+  .cam-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    gap: 12px;
+    padding: 10px 16px;
+    border-radius: 99px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .cam-btn-circle {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(255,255,255,0.15);
+    transition: 0.15s;
+  }
+  .cam-btn-circle:active {
+    transform: scale(0.92);
+    background: rgba(255,255,255,0.2);
+  }
+  .cam-btn-shutter {
+    width: 68px;
+    height: 68px;
+    border-radius: 50%;
+    background: var(--gold);
+    color: var(--forest);
+    box-shadow: 0 0 0 5px rgba(233,196,106,0.3);
+    border: 3px solid #fff;
+    display: grid;
+    place-items: center;
+    transition: 0.15s;
+  }
+  .cam-btn-shutter:active {
+    transform: scale(0.92);
+  }
+  .alert-banner {
+    padding: 14px 16px;
+    border-radius: 20px;
+    background: rgba(233,196,106,0.12);
+    border: 1px solid rgba(233,196,106,0.3);
+    color: #e8dfc0;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  .alert-banner b {
+    color: var(--gold);
+  }
+  .alert-banner a {
+    color: var(--gold);
+    font-weight: 700;
+  }
+  .quick-links {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+</style>
+</head>
+<body>
+<div class="cam-page">
+  <nav class="cam-nav">
+    <a class="brand" href="/" style="color:#fff;font-size:16px;">
+      <span class="brand__mark" style="width:28px;height:28px;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#E9C46A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17c3-9 6-9 8-4s5 3 8-6"/></svg>
+      </span>
+      Wireless Camera
+    </a>
+    <div class="cam-status" id="camStatus">
+      <span class="dot"></span>
+      <span id="camStatusText">Connecting...</span>
+    </div>
+  </nav>
+
+  {% if not is_https and not https_active %}
+  <div class="alert-banner">
+    <b>Camera over HTTP:</b> Mobile browsers restrict live streaming on plain HTTP.
+    <div style="margin-top:6px;">Use <b>Take Photo</b> to snap frames directly to the dashboard, or run the server with <code>--https</code> for live continuous streaming.</div>
+    <div class="quick-links">
+      <button class="btn btn--forest" id="httpSnapBtn" style="font-size:12px;padding:8px 14px;">📷 Take Photo to Dashboard</button>
+    </div>
+  </div>
+  {% elif not is_https and https_active %}
+  <div class="alert-banner">
+    <b>Secure mode available:</b> You are on HTTP. Tap below to switch to HTTPS for smooth 30fps continuous video streaming.
+    <div class="quick-links">
+      <a class="btn" href="{{ cam_url_https }}" style="font-size:12px;padding:8px 14px;text-decoration:none;">🚀 Switch to Secure HTTPS</a>
+      <button class="btn btn--ghost" id="httpSnapBtn" style="font-size:12px;padding:8px 14px;">Snap Photo (HTTP)</button>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="cam-viewport-card" id="viewportCard">
+    <video id="camVideo" autoplay playsinline muted></video>
+    <img id="camEdgeImg" alt="Edge outline preview" style="display:none;">
+    
+    <div class="cam-hud-top">
+      <span class="cam-pill" id="liveTag">● LIVE</span>
+      <span class="cam-pill" id="fpsTag">0 fps</span>
+    </div>
+
+    <div class="cam-hud-bottom">
+      <span class="cam-pill" id="lensTag">Back Camera</span>
+      <button class="cam-pill" id="toggleViewBtn" style="pointer-events:auto;cursor:pointer;">View: Camera</button>
+    </div>
+  </div>
+
+  <div class="cam-controls">
+    <div class="cam-actions">
+      <!-- Flip Camera -->
+      <button class="cam-btn-circle" id="flipBtn" aria-label="Flip camera" title="Flip camera">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 10c0-4.4-3.6-8-8-8s-8 3.6-8 8h-3l4 4 4-4h-3c0-3.3 2.7-6 6-6s6 2.7 6 6-2.7 6-6 6v2c4.4 0 8-3.6 8-8z"/>
+        </svg>
+      </button>
+
+      <!-- Shutter to Dashboard -->
+      <button class="cam-btn-shutter" id="camShutter" aria-label="Send high-res capture to dashboard gallery" title="Snap to Gallery">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/><path d="M19 4h-3.2L14.2 2H9.8L8.2 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/>
+        </svg>
+      </button>
+
+      <!-- Pause / Resume -->
+      <button class="cam-btn-circle" id="camPauseBtn" aria-label="Pause stream" title="Pause / Resume stream">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
+        </svg>
+      </button>
+
+      <!-- Torch / Flash if supported -->
+      <button class="cam-btn-circle" id="torchBtn" aria-label="Toggle flashlight" title="Flashlight" style="display:none;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+        </svg>
+      </button>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:0 8px;font-size:12px;color:rgba(255,255,255,0.6);">
+      <span>Streaming directly to computer dashboard</span>
+      <a href="/mobile" style="color:var(--gold);text-decoration:none;font-weight:600;">Open Phone Dashboard &rarr;</a>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="httpPhotoInput" accept="image/*" capture="environment" hidden>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  let toastTimer;
+  function toast(msg) {
+    const t = $('#toast'); if (!t) return;
+    t.textContent = msg; t.classList.add('on');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('on'), 3000);
+  }
+
+  const wsUrl = path => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${path}`;
+
+  class CamClient {
+    constructor() {
+      this.video = $('#camVideo');
+      this.edgeImg = $('#camEdgeImg');
+      this.statusEl = $('#camStatus');
+      this.statusText = $('#camStatusText');
+      this.fpsTag = $('#fpsTag');
+      this.lensTag = $('#lensTag');
+      this.viewBtn = $('#toggleViewBtn');
+      this.torchBtn = $('#torchBtn');
+      
+      this.facingMode = 'environment'; // 'environment' | 'user'
+      this.stream = null;
+      this.ws = null;
+      this.cap = document.createElement('canvas');
+      this.paused = false;
+      this.busy = false;
+      this.frames = 0;
+      this.t0 = performance.now();
+      this.lastTick = 0;
+      this.viewMode = 'camera'; // 'camera' | 'edge'
+      this.torchOn = false;
+
+      this.bind();
+      this.connectWs();
+      this.startCamera();
+      requestAnimationFrame(t => this.tick(t));
+    }
+
+    bind() {
+      $('#flipBtn').addEventListener('click', () => this.flipCamera());
+      $('#camShutter').addEventListener('click', () => this.capture());
+      $('#camPauseBtn').addEventListener('click', () => this.togglePause());
+      this.viewBtn.addEventListener('click', () => this.toggleView());
+      this.torchBtn.addEventListener('click', () => this.toggleTorch());
+
+      const httpBtn = $('#httpSnapBtn');
+      const photoIn = $('#httpPhotoInput');
+      if (httpBtn && photoIn) {
+        httpBtn.addEventListener('click', () => photoIn.click());
+        photoIn.addEventListener('change', e => {
+          const file = e.target.files[0];
+          if (!file) return;
+          this.uploadPhoto(file);
+          e.target.value = '';
+        });
+      }
+    }
+
+    setStatus(text, online) {
+      if (this.statusText) this.statusText.textContent = text;
+      if (this.statusEl) {
+        if (online) this.statusEl.classList.add('online');
+        else this.statusEl.classList.remove('online');
+      }
+    }
+
+    connectWs() {
+      this.ws = new WebSocket(wsUrl('/ws/camera/feed'));
+      this.ws.onopen = () => {
+        this.setStatus('Connected', true);
+        toast('Connected to laptop dashboard');
+      };
+      this.ws.onclose = () => {
+        this.setStatus('Reconnecting...', false);
+        setTimeout(() => this.connectWs(), 1500);
+      };
+      this.ws.onerror = () => {
+        this.setStatus('Connection error', false);
+      };
+      this.ws.onmessage = e => {
+        this.busy = false;
+        try {
+          const d = JSON.parse(e.data);
+          if (d.out && this.viewMode === 'edge') {
+            this.edgeImg.src = d.out;
+          }
+          if (d.event === 'captured') {
+            toast('Frame saved to dashboard gallery!');
+          }
+        } catch (err) {}
+      };
+    }
+
+    async startCamera() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        this.setStatus('HTTPS Required', false);
+        toast('Live camera needs HTTPS on mobile browsers. Use Take Photo below or switch to HTTPS.');
+        return;
+      }
+
+      if (this.stream) {
+        this.stream.getTracks().forEach(t => t.stop());
+        this.stream = null;
+      }
+
+      try {
+        const constraints = {
+          video: {
+            facingMode: { ideal: this.facingMode },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            frameRate: { ideal: 24 }
+          },
+          audio: false
+        };
+        this.stream = await navigator.mediaDevices.getUserMedia(constraints);
+        this.video.srcObject = this.stream;
+        await this.video.play();
+        this.lensTag.textContent = this.facingMode === 'environment' ? 'Back camera' : 'Front camera';
+        
+        // Check torch support
+        const track = this.stream.getVideoTracks()[0];
+        const caps = track.getCapabilities ? track.getCapabilities() : {};
+        if (caps.torch) {
+          this.torchBtn.style.display = 'grid';
+        } else {
+          this.torchBtn.style.display = 'none';
+        }
+      } catch (err) {
+        this.setStatus('Camera blocked', false);
+        toast('Camera access denied or unavailable.');
+      }
+    }
+
+    flipCamera() {
+      this.facingMode = this.facingMode === 'environment' ? 'user' : 'environment';
+      this.startCamera();
+    }
+
+    async toggleTorch() {
+      if (!this.stream) return;
+      const track = this.stream.getVideoTracks()[0];
+      try {
+        this.torchOn = !this.torchOn;
+        await track.applyConstraints({ advanced: [{ torch: this.torchOn }] });
+        this.torchBtn.style.background = this.torchOn ? 'var(--gold)' : 'rgba(255,255,255,0.1)';
+        this.torchBtn.style.color = this.torchOn ? 'var(--forest)' : '#fff';
+      } catch (e) {
+        toast('Torch not supported');
+      }
+    }
+
+    togglePause() {
+      this.paused = !this.paused;
+      if (this.paused) {
+        this.video.pause();
+        $('#liveTag').textContent = '⏸ PAUSED';
+        $('#liveTag').style.color = '#cbd5e1';
+      } else {
+        this.video.play().catch(() => {});
+        $('#liveTag').textContent = '● LIVE';
+        $('#liveTag').style.color = '#e9c46a';
+      }
+    }
+
+    toggleView() {
+      if (this.viewMode === 'camera') {
+        this.viewMode = 'edge';
+        this.viewBtn.textContent = 'View: Outline';
+        this.video.style.display = 'none';
+        this.edgeImg.style.display = 'block';
+      } else {
+        this.viewMode = 'camera';
+        this.viewBtn.textContent = 'View: Camera';
+        this.video.style.display = 'block';
+        this.edgeImg.style.display = 'none';
+      }
+    }
+
+    tick(ts) {
+      requestAnimationFrame(t => this.tick(t));
+      if (this.paused || this.busy || !this.ws || this.ws.readyState !== 1) return;
+      if (ts - this.lastTick < 60) return; // ~16-18 fps for ultra-smooth low latency
+
+      const vw = this.video.videoWidth, vh = this.video.videoHeight;
+      if (!vw || !vh) return;
+
+      this.lastTick = ts;
+      const w = Math.min(640, vw);
+      const h = Math.round(vh * w / vw);
+      this.cap.width = w;
+      this.cap.height = h;
+      this.cap.getContext('2d').drawImage(this.video, 0, 0, w, h);
+
+      this.busy = true;
+      this.cap.toBlob(blob => {
+        if (blob && this.ws && this.ws.readyState === 1) {
+          this.ws.send(blob);
+          this.frames++;
+          const now = performance.now();
+          if (now - this.t0 > 1000) {
+            this.fpsTag.textContent = Math.round(this.frames * 1000 / (now - this.t0)) + ' fps';
+            this.frames = 0;
+            this.t0 = now;
+          }
+        }
+      }, 'image/jpeg', 0.72);
+      setTimeout(() => { this.busy = false; }, 2000);
+    }
+
+    async capture() {
+      if (!this.cap.width) {
+        toast('No active camera frame');
+        return;
+      }
+      try {
+        if (this.ws && this.ws.readyState === 1) {
+          this.ws.send(JSON.stringify({ type: 'capture' }));
+          toast('Capturing frame to dashboard gallery...');
+        } else {
+          const dataUrl = this.cap.toDataURL('image/jpeg', 0.88);
+          await fetch('/api/capture', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image: dataUrl, source: 'phone' })
+          });
+          toast('Saved to shared gallery!');
+        }
+      } catch (e) {
+        toast('Capture failed: ' + e.message);
+      }
+    }
+
+    async uploadPhoto(file) {
+      toast('Sending photo to dashboard...');
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const res = await fetch('/api/camera/photo', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image: reader.result, source: 'phone' })
+          });
+          const d = await res.json();
+          this.setStatus('Connected (Photo)', true);
+          toast('Photo displayed on dashboard!');
+        } catch (e) {
+          toast('Photo upload failed');
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  }
+
+  window.addEventListener('DOMContentLoaded', () => {
+    window.camClient = new CamClient();
+  });
+})();
+</script>
+</body>
+</html>
