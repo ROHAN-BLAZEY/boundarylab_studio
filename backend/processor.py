@@ -44,7 +44,7 @@ class Params:
         p.thickness = int(np.clip(p.thickness, 1, 4))
         if p.style not in styles.RENDERERS:
             p.style = "classic"
-        p.rotation = int(np.clip(p.rotation, 0, 100))
+        p.rotation = int(np.clip(p.rotation, 0, 360))
         p.contrast_method = p.contrast_method if p.contrast_method in ("none", "percentile", "histogram") else "percentile"
         p.smoothing_method = p.smoothing_method if p.smoothing_method in ("none", "bilateral", "gaussian", "median") else "bilateral"
         p.edge_method = p.edge_method if p.edge_method in ("canny", "sobel", "laplacian", "threshold") else "canny"

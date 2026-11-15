@@ -1,9 +1,10 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<title>Wireless Camera · EdgeSeg Studio</title>
+<meta name="theme-color" content="#101715"><link rel="manifest" href="/manifest.webmanifest">
+<title>Wireless Camera Â· BoundaryLab Studio</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -65,8 +66,7 @@
     max-height: 64vh;
     box-shadow: 0 20px 40px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(255,255,255,0.1);
   }
-  .cam-viewport-card video,
-  .cam-viewport-card img {
+  .cam-viewport-card video {
     width: 100%;
     height: 100%;
     object-fit: cover;
@@ -171,6 +171,33 @@
     gap: 8px;
     margin-top: 10px;
   }
+  .phone-output-grid { display:grid; gap:12px; }
+  .phone-output-card { position:relative; min-width:0; overflow:hidden; border:1px solid rgba(255,255,255,.1); border-radius:20px; background:#070a09; }
+  .phone-output-card h2 { position:absolute; z-index:2; top:10px; left:10px; margin:0; padding:5px 10px; border-radius:99px; background:rgba(15,23,20,.78); color:#e9c46a; font-size:11px; }
+  .phone-output-card img { display:block; width:100%; aspect-ratio:16/9; object-fit:contain; }
+  .phone-output-card img[hidden] { display:none; }
+  .phone-output-empty { display:grid; place-items:center; min-height:120px; padding:16px; color:#84918a; text-align:center; font-size:12px; }
+  .phone-output-empty[hidden] { display:none; }
+  .cam-page.focus-output .phone-output-card:last-child { border-color:var(--gold); box-shadow:0 0 0 1px rgba(233,196,106,.28),0 12px 32px rgba(0,0,0,.2); }
+  .cam-control-panel { padding:16px; border:1px solid rgba(255,255,255,.1); border-radius:20px; background:#17201d; }
+  .cam-control-panel h2 { margin:0 0 14px; font-size:15px; }
+  .cam-control-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .cam-control-field { display:grid; gap:6px; min-width:0; color:#cbd5e1; font-size:11px; }
+  .cam-control-field select { width:100%; min-height:38px; padding:7px 10px; border:1px solid rgba(255,255,255,.1); border-radius:10px; background:#273136; color:#fff; }
+  .cam-control-field input[type=range] { width:100%; accent-color:var(--gold); }
+  .cam-control-field output { color:var(--gold); font-weight:700; }
+  .cam-control-wide { grid-column:1/-1; }
+  .cam-control-check { display:flex; align-items:center; gap:8px; min-height:38px; color:#cbd5e1; font-size:11px; }
+  .cam-control-check input { accent-color:var(--gold); }
+  @media (max-width: 520px) {
+    .cam-page { padding: 12px 12px calc(env(safe-area-inset-bottom) + 18px); gap: 12px; }
+    .cam-nav { flex-wrap: wrap; }
+    .cam-viewport-card { aspect-ratio: 3/4; max-height: 58svh; border-radius: 22px; }
+    .cam-actions { position: sticky; bottom: max(8px, env(safe-area-inset-bottom)); justify-content: space-evenly; padding: 10px; background: rgba(255,255,255,0.1); backdrop-filter: blur(14px); }
+    .cam-btn-circle { width: 46px; height: 46px; }
+    .cam-btn-shutter { width: 62px; height: 62px; }
+    #startCamBtn:not([hidden]) { flex: 1; }
+  }
 </style>
 </head>
 <body>
@@ -186,6 +213,7 @@
       <span class="dot"></span>
       <span id="camStatusText">Connecting...</span>
     </div>
+    {% if auth_enabled %}<form method="post" action="/logout"><button class="nav-signout" type="submit">Sign out</button></form>{% endif %}
   </nav>
 
   {% if not is_https and not https_active %}
@@ -193,14 +221,14 @@
     <b>Camera over HTTP:</b> Mobile browsers restrict live streaming on plain HTTP.
     <div style="margin-top:6px;">Use <b>Take Photo</b> to snap frames directly to the dashboard, or run the server with <code>--https</code> for live continuous streaming.</div>
     <div class="quick-links">
-      <button class="btn btn--forest" id="httpSnapBtn" style="font-size:12px;padding:8px 14px;">📷 Take Photo to Dashboard</button>
+      <button class="btn btn--forest" id="httpSnapBtn" style="font-size:12px;padding:8px 14px;">ðŸ“· Take Photo to Dashboard</button>
     </div>
   </div>
   {% elif not is_https and https_active %}
   <div class="alert-banner">
     <b>Secure mode available:</b> You are on HTTP. Tap below to switch to HTTPS for smooth 30fps continuous video streaming.
     <div class="quick-links">
-      <a class="btn" href="{{ cam_url_https }}" style="font-size:12px;padding:8px 14px;text-decoration:none;">🚀 Switch to Secure HTTPS</a>
+      <a class="btn" href="{{ cam_url_https }}" style="font-size:12px;padding:8px 14px;text-decoration:none;">ðŸš€ Switch to Secure HTTPS</a>
       <button class="btn btn--ghost" id="httpSnapBtn" style="font-size:12px;padding:8px 14px;">Snap Photo (HTTP)</button>
     </div>
   </div>
@@ -208,21 +236,26 @@
 
   <div class="cam-viewport-card" id="viewportCard">
     <video id="camVideo" autoplay playsinline muted></video>
-    <img id="camEdgeImg" alt="Edge outline preview" style="display:none;">
     
     <div class="cam-hud-top">
-      <span class="cam-pill" id="liveTag">● LIVE</span>
+      <span class="cam-pill" id="liveTag">LIVE · COLOR</span>
       <span class="cam-pill" id="fpsTag">0 fps</span>
     </div>
 
     <div class="cam-hud-bottom">
       <span class="cam-pill" id="lensTag">Back Camera</span>
-      <button class="cam-pill" id="toggleViewBtn" style="pointer-events:auto;cursor:pointer;">View: Camera</button>
+      <button class="cam-pill" id="toggleViewBtn" style="pointer-events:auto;cursor:pointer;">Focus: All views</button>
     </div>
   </div>
 
+  <section class="phone-output-grid" aria-label="Live phone image processing">
+    <article class="phone-output-card"><h2>Live grayscale</h2><img id="camGrayImg" alt="Live grayscale camera stream" hidden><div class="phone-output-empty" id="grayEmpty">Grayscale stream will appear when the camera is processing frames.</div></article>
+    <article class="phone-output-card"><h2>Processed outline</h2><img id="camEdgeImg" alt="Live processed camera output" hidden><div class="phone-output-empty" id="edgeEmpty">Processed stream will appear when the camera is processing frames.</div></article>
+  </section>
+
   <div class="cam-controls">
     <div class="cam-actions">
+      <button class="btn" id="startCamBtn" type="button">Start camera</button>
       <!-- Flip Camera -->
       <button class="cam-btn-circle" id="flipBtn" aria-label="Flip camera" title="Flip camera">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -257,6 +290,22 @@
       <a href="/mobile" style="color:var(--gold);text-decoration:none;font-weight:600;">Open Phone Dashboard &rarr;</a>
     </div>
   </div>
+
+  <section class="cam-control-panel" aria-label="Live processing controls">
+    <h2>Live processing controls <span id="controlSync" style="float:right;color:#9ca9a1;font-size:11px;font-weight:500">Synced with Dashboard</span></h2>
+    <div class="cam-control-grid">
+      <label class="cam-control-field">Low threshold <output data-output="threshold1">28</output><input type="range" data-param="threshold1" min="5" max="150" value="28"></label>
+      <label class="cam-control-field">High threshold <output data-output="threshold2">75</output><input type="range" data-param="threshold2" min="20" max="300" value="75"></label>
+      <label class="cam-control-field">Noise smoothing <output data-output="smoothing">30</output><input type="range" data-param="smoothing" min="5" max="80" value="30"></label>
+      <label class="cam-control-field">Rotation <output data-output="rotation">0°</output><input type="range" data-param="rotation" min="0" max="360" value="0"></label>
+      <label class="cam-control-field">Smoothing filter<select data-param="smoothing_method"><option value="bilateral">Bilateral</option><option value="gaussian">Gaussian</option><option value="median">Median</option><option value="none">Off</option></select></label>
+      <label class="cam-control-field">Edge method<select data-param="edge_method"><option value="canny">Canny</option><option value="sobel">Sobel</option><option value="laplacian">Laplacian</option><option value="threshold">Adaptive threshold</option></select></label>
+      <label class="cam-control-field">Output style<select data-param="style">{% for key, name in styles.items() %}<option value="{{ key }}">{{ name }}</option>{% endfor %}</select></label>
+      <label class="cam-control-field neon-options" hidden>Neon colour<select data-param="neon_color"><option value="magenta">Magenta</option><option value="cyan">Cyan</option><option value="green">Green</option><option value="orange">Orange</option><option value="yellow">Yellow</option><option value="blue">Blue</option></select></label>
+      <label class="cam-control-field">Morphology<select data-param="morphology"><option value="none">Off</option><option value="open">Open</option><option value="close">Close</option></select></label>
+      <label class="cam-control-check"><input type="checkbox" data-param="auto_contrast" checked> Auto contrast</label>
+    </div>
+  </section>
 </div>
 
 <input type="file" id="httpPhotoInput" accept="image/*" capture="environment" hidden>
@@ -278,12 +327,14 @@
     constructor() {
       this.video = $('#camVideo');
       this.edgeImg = $('#camEdgeImg');
+      this.grayImg = $('#camGrayImg');
       this.statusEl = $('#camStatus');
       this.statusText = $('#camStatusText');
       this.fpsTag = $('#fpsTag');
       this.lensTag = $('#lensTag');
       this.viewBtn = $('#toggleViewBtn');
       this.torchBtn = $('#torchBtn');
+      this.startBtn = $('#startCamBtn');
       
       this.facingMode = 'environment'; // 'environment' | 'user'
       this.stream = null;
@@ -294,8 +345,9 @@
       this.frames = 0;
       this.t0 = performance.now();
       this.lastTick = 0;
-      this.viewMode = 'camera'; // 'camera' | 'edge'
+      this.viewMode = 'all';
       this.torchOn = false;
+      this.params = {threshold1:28,threshold2:75,smoothing:30,rotation:0,auto_contrast:true,smoothing_method:'bilateral',edge_method:'canny',style:'classic',neon_color:'magenta',morphology:'none'};
 
       this.bind();
       this.connectWs();
@@ -305,10 +357,21 @@
 
     bind() {
       $('#flipBtn').addEventListener('click', () => this.flipCamera());
+      this.startBtn.addEventListener('click', () => this.startCamera());
       $('#camShutter').addEventListener('click', () => this.capture());
       $('#camPauseBtn').addEventListener('click', () => this.togglePause());
       this.viewBtn.addEventListener('click', () => this.toggleView());
       this.torchBtn.addEventListener('click', () => this.toggleTorch());
+      document.querySelectorAll('[data-param]').forEach(control => {
+        const update = () => {
+          this.params[control.dataset.param] = control.type === 'checkbox' ? control.checked :
+            (control.type === 'range' ? Number(control.value) : control.value);
+          this.refreshControlLabels();
+          this.sendParams();
+        };
+        control.addEventListener('input', update);
+        control.addEventListener('change', update);
+      });
 
       const httpBtn = $('#httpSnapBtn');
       const photoIn = $('#httpPhotoInput');
@@ -335,10 +398,11 @@
       this.ws = new WebSocket(wsUrl('/ws/camera/feed'));
       this.ws.onopen = () => {
         this.setStatus('Connected', true);
-        toast('Connected to laptop dashboard');
+        toast('Connected. Start the laptop Dashboard and choose Phone camera.');
       };
       this.ws.onclose = () => {
         this.setStatus('Reconnecting...', false);
+        this.busy = false;
         setTimeout(() => this.connectWs(), 1500);
       };
       this.ws.onerror = () => {
@@ -348,8 +412,13 @@
         this.busy = false;
         try {
           const d = JSON.parse(e.data);
-          if (d.out && this.viewMode === 'edge') {
-            this.edgeImg.src = d.out;
+          if (d.event === 'phone_settings' && d.params) {
+            this.applyParams(d.params);
+          }
+          if (d.event === 'phone_processed') {
+            this.setStatus('Streaming', true);
+            if (d.gray) this.showProcessed(this.grayImg, d.gray, $('#grayEmpty'));
+            if (d.out) this.showProcessed(this.edgeImg, d.out, $('#edgeEmpty'));
           }
           if (d.event === 'captured') {
             toast('Frame saved to dashboard gallery!');
@@ -358,10 +427,43 @@
       };
     }
 
+    sendParams() {
+      if (this.ws && this.ws.readyState === 1) {
+        this.ws.send(JSON.stringify({type:'params', params:this.params}));
+      }
+    }
+
+    applyParams(params) {
+      Object.assign(this.params, params);
+      document.querySelectorAll('[data-param]').forEach(control => {
+        const value = this.params[control.dataset.param];
+        if (value === undefined) return;
+        if (control.type === 'checkbox') control.checked = !!value;
+        else control.value = value;
+      });
+      this.refreshControlLabels();
+    }
+
+    refreshControlLabels() {
+      document.querySelectorAll('[data-param]').forEach(control => {
+        const output = document.querySelector(`[data-output="${control.dataset.param}"]`);
+        if (output) output.textContent = control.dataset.param === 'rotation' ? `${control.value}°` : control.value;
+      });
+      const neon = document.querySelector('.neon-options');
+      if (neon) neon.hidden = this.params.style !== 'neon';
+    }
+
+    showProcessed(img, src, empty) {
+      if (!img || !src) return;
+      img.onload = () => { img.hidden = false; if (empty) empty.hidden = true; };
+      img.onerror = () => { img.hidden = true; if (empty) empty.hidden = false; };
+      img.src = src;
+    }
+
     async startCamera() {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         this.setStatus('HTTPS Required', false);
-        toast('Live camera needs HTTPS on mobile browsers. Use Take Photo below or switch to HTTPS.');
+        toast('Phone camera needs HTTPS. Open the secure camera link from the Dashboard QR.');
         return;
       }
 
@@ -383,6 +485,8 @@
         this.stream = await navigator.mediaDevices.getUserMedia(constraints);
         this.video.srcObject = this.stream;
         await this.video.play();
+        this.setStatus('Camera ready', true);
+        this.startBtn.hidden = true;
         this.lensTag.textContent = this.facingMode === 'environment' ? 'Back camera' : 'Front camera';
         
         // Check torch support
@@ -395,7 +499,8 @@
         }
       } catch (err) {
         this.setStatus('Camera blocked', false);
-        toast('Camera access denied or unavailable.');
+        this.startBtn.hidden = false;
+        toast(err && err.name === 'NotAllowedError' ? 'Allow camera access, then tap Start camera.' : 'Camera unavailable. Check permissions and tap Start camera to retry.');
       }
     }
 
@@ -421,39 +526,31 @@
       this.paused = !this.paused;
       if (this.paused) {
         this.video.pause();
-        $('#liveTag').textContent = '⏸ PAUSED';
+        $('#liveTag').textContent = 'â¸ PAUSED';
         $('#liveTag').style.color = '#cbd5e1';
       } else {
         this.video.play().catch(() => {});
-        $('#liveTag').textContent = '● LIVE';
+        $('#liveTag').textContent = 'â— LIVE';
         $('#liveTag').style.color = '#e9c46a';
       }
     }
 
     toggleView() {
-      if (this.viewMode === 'camera') {
-        this.viewMode = 'edge';
-        this.viewBtn.textContent = 'View: Outline';
-        this.video.style.display = 'none';
-        this.edgeImg.style.display = 'block';
-      } else {
-        this.viewMode = 'camera';
-        this.viewBtn.textContent = 'View: Camera';
-        this.video.style.display = 'block';
-        this.edgeImg.style.display = 'none';
-      }
+      this.viewMode = this.viewMode === 'all' ? 'processed' : 'all';
+      document.querySelector('.cam-page').classList.toggle('focus-output', this.viewMode === 'processed');
+      this.viewBtn.textContent = this.viewMode === 'all' ? 'Focus: All views' : 'Focus: Processed';
     }
 
     tick(ts) {
       requestAnimationFrame(t => this.tick(t));
-      if (this.paused || this.busy || !this.ws || this.ws.readyState !== 1) return;
-      if (ts - this.lastTick < 60) return; // ~16-18 fps for ultra-smooth low latency
+      if (this.paused || this.busy || !this.ws || this.ws.readyState !== 1 || this.ws.bufferedAmount > 90000) return;
+      if (ts - this.lastTick < 80) return; // about 12 fps to limit uplink load
 
       const vw = this.video.videoWidth, vh = this.video.videoHeight;
       if (!vw || !vh) return;
 
       this.lastTick = ts;
-      const w = Math.min(640, vw);
+      const w = Math.min(560, vw);
       const h = Math.round(vh * w / vw);
       this.cap.width = w;
       this.cap.height = h;
@@ -470,28 +567,26 @@
             this.frames = 0;
             this.t0 = now;
           }
-        }
-      }, 'image/jpeg', 0.72);
-      setTimeout(() => { this.busy = false; }, 2000);
+        } else this.busy = false;
+      }, 'image/jpeg', 0.62);
     }
 
     async capture() {
-      if (!this.cap.width) {
-        toast('No active camera frame');
-        return;
-      }
+      const vw = this.video.videoWidth, vh = this.video.videoHeight;
+      if (!vw || !vh) { toast('No active camera frame'); return; }
       try {
+        const captureCanvas = document.createElement('canvas');
+        captureCanvas.width = vw; captureCanvas.height = vh;
+        captureCanvas.getContext('2d').drawImage(this.video, 0, 0, vw, vh);
+        const image = captureCanvas.toDataURL('image/jpeg', 0.9);
         if (this.ws && this.ws.readyState === 1) {
-          this.ws.send(JSON.stringify({ type: 'capture' }));
-          toast('Capturing frame to dashboard gallery...');
+          this.ws.send(JSON.stringify({type:'capture', image}));
+          toast('Saving full-resolution capture to dashboard...');
         } else {
-          const dataUrl = this.cap.toDataURL('image/jpeg', 0.88);
-          await fetch('/api/capture', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ image: dataUrl, source: 'phone' })
-          });
-          toast('Saved to shared gallery!');
+          const response = await fetch('/api/capture', {method:'POST', headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({image, source:'phone'})});
+          if (!response.ok) throw new Error('Capture failed');
+          toast('Saved full-resolution capture to gallery');
         }
       } catch (e) {
         toast('Capture failed: ' + e.message);
@@ -521,6 +616,7 @@
 
   window.addEventListener('DOMContentLoaded', () => {
     window.camClient = new CamClient();
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
   });
 })();
 </script>

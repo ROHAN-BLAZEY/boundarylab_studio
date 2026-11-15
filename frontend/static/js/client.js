@@ -1,5 +1,6 @@
-/* EdgeSeg Studio client: camera/video/photo sources -> WebSocket -> OpenCV backend -> live preview + shared gallery */
+/* BoundaryLab Studio client: camera/video/photo sources -> WebSocket -> OpenCV backend -> live preview + shared gallery */
 (() => {
+if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('/sw.js').catch(() => {});
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 let toastTimer;
@@ -25,7 +26,7 @@ class Studio {
     this.source = source;                       // 'laptop' | 'phone'
     this.params = { style: 'classic', threshold1: 28, threshold2: 75, smoothing: 30, cleanup: 14, thickness: 1, auto_contrast: true, shading: 60, grid: 0, rotation: 0, contrast_method: 'percentile', smoothing_method: 'bilateral', edge_method: 'canny', morphology: 'none', neon_color: 'magenta' };
     this.cap = document.createElement('canvas');
-    this.vid = $('#vid'); this.out = $('#outImg'); this.view = $('#srcView');
+    this.vid = $('#vid'); this.out = $('#outImg'); this.processed = $('#processedImg'); this.view = $('#srcView');
     this.stageImgs = $$('.stage img');
     this.mode = 'video'; this.paused = false; this.dirty = true; this.busy = false; this.hasFrame = false;
     this.img = null; this.stream = null; this.last = 0; this.frames = 0; this.t0 = performance.now(); this.pending = false;
@@ -50,12 +51,31 @@ class Studio {
 
   setMode(mode, label) {
     if (this.mode === 'phone' && mode !== 'phone' && this.ws && this.ws.readyState === 1) {
-      this.ws.send(JSON.stringify({ action: 'unsubscribe_phone' }));
+      this.ws.send(JSON.stringify({ action: 'unsubscribe_phone', dashboard: this.source }));
     }
     this.mode = mode; this.paused = false; this.hasFrame = false; this.dirty = true;
     const n = $('#srcName'); if (n) n.textContent = label;
+    const sourceTag = $('#srcTag'), resultTag = $('#resultTag');
+    const gray = $('#grayView'), output = $('#outImg');
+    if (sourceTag) sourceTag.textContent = mode === 'phone' ? 'Phone stream - Color' : 'Source - Color';
+    if (resultTag) resultTag.textContent = 'Source - Grayscale';
+    if (gray && output) { gray.hidden = false; output.hidden = true; }
+    if (this.processed) {
+      this.processed.hidden = true;
+      this.processed.removeAttribute('src');
+      const empty = $('#processedEmpty'); if (empty) empty.hidden = false;
+    }
+    this.stageImgs.forEach(img => { img.removeAttribute('src'); delete img.dataset.stageSource; img.hidden = true; });
+    const clearUpload = $('#clearUploadBtn'); if (clearUpload) clearUpload.hidden = mode !== 'image';
     $$('[data-src]').forEach(b => b.setAttribute('aria-pressed', b.dataset.src === mode));
     this.syncPause();
+    this.sendParams();
+  }
+
+  clearUploadedImage() {
+    this.img = null; this.loadedGalleryId = null; this.pending = false;
+    this.useSample();
+    toast('Image cleared');
   }
 
   useSample() {
@@ -66,8 +86,8 @@ class Studio {
   }
 
   async useCamera() {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      toast('Live camera needs HTTPS on mobile browsers. Use Take photo or open Wireless Camera.');
+    if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      toast('Phone browsers need HTTPS for live camera access. Use the secure camera link or Take photo.');
       openQrModal();
       return;
     }
@@ -81,8 +101,11 @@ class Studio {
       this.vid.srcObject = this.stream;
       await this.vid.play();
       this.setMode('camera', 'Local camera');
+      toast('Camera is on. Live processing is running.');
     } catch (e) {
-      toast('Camera blocked. Allow camera access, or use Take photo.');
+      const reason = e && e.name === 'NotAllowedError' ? 'Allow camera access in your browser.' :
+        e && e.name === 'NotFoundError' ? 'No camera was found on this device.' : 'Camera could not start. Check browser permissions.';
+      toast(reason);
     }
   }
 
@@ -91,7 +114,7 @@ class Studio {
     this.vid.pause();
     this.setMode('phone', 'Phone camera');
     if (this.ws && this.ws.readyState === 1) {
-      this.ws.send(JSON.stringify({ action: 'subscribe_phone' }));
+      this.ws.send(JSON.stringify({ action: 'subscribe_phone', dashboard: this.source }));
     }
     if (!this.phoneConnected) {
       openQrModal();
@@ -101,7 +124,7 @@ class Studio {
     }
   }
 
-  loadFile(file, { label, auto } = {}) {
+  loadFile(file, { label, auto, galleryId } = {}) {
     if (!file) return;
     if (this.fileUrl) URL.revokeObjectURL(this.fileUrl);
     const url = this.fileUrl = URL.createObjectURL(file);
@@ -111,7 +134,7 @@ class Studio {
     }
     const im = new Image();
     im.onload = () => {
-      this.stopStream(); this.vid.pause(); this.img = im;
+      this.stopStream(); this.vid.pause(); this.img = im; this.loadedGalleryId = galleryId || null;
       this.setMode('image', label || 'Photo');
       this.pending = !!auto;
     };
@@ -139,6 +162,90 @@ class Studio {
     b.textContent = this.paused ? `Resume ${noun}` : (this.mode === 'camera' ? 'Freeze camera' : (this.mode === 'phone' ? 'Freeze phone feed' : 'Pause video'));
   }
 
+  openStage(img) {
+    const modal = $('#stageModal'), preview = $('#stageModalImg');
+    const src = img.dataset.stageSource || img.getAttribute('src');
+    if (!modal || !preview || !src || !src.startsWith('data:image/')) return;
+    preview.src = src; preview.alt = img.alt || 'Processing stage';
+    const title = $('#stageModalTitle');
+    if (title) title.textContent = img.closest('.stage').querySelector('b').textContent;
+    modal.classList.add('open');
+  }
+
+  closeStage() { const modal = $('#stageModal'); if (modal) modal.classList.remove('open'); }
+
+  setPreviewImage(img, src) {
+    if (!img || !src) return;
+    img.hidden = true;
+    img.dataset.stageSource = src;
+    const empty = img.id === 'processedImg' ? $('#processedEmpty') : null;
+    img.onload = () => {
+      if (img.dataset.stageSource === src) {
+        img.hidden = false;
+        if (empty) empty.hidden = true;
+      }
+    };
+    img.onerror = () => {
+      if (img.dataset.stageSource === src) {
+        img.hidden = true;
+        if (empty) empty.hidden = false;
+      }
+    };
+    img.src = src;
+  }
+
+  applyPhoneSettings(settings) {
+    if (!settings || typeof settings !== 'object') return;
+    Object.assign(this.params, settings);
+    $$('[data-param]').forEach(control => {
+      const value = this.params[control.dataset.param];
+      if (value === undefined) return;
+      if (control.type === 'checkbox') control.checked = !!value;
+      else control.value = value;
+      const output = control.parentElement.querySelector('output');
+      if (output) output.textContent = control.dataset.param === 'rotation' ? `${control.value}°` : control.value;
+    });
+    $$('[data-style]').forEach(button => button.setAttribute('aria-pressed', button.dataset.style === this.params.style));
+    $$('[data-for-style]').forEach(el => { el.hidden = el.dataset.forStyle !== this.params.style; });
+    const styleName = $('#styleName');
+    const selectedStyle = $(`[data-style="${this.params.style}"]`);
+    if (styleName && selectedStyle) styleName.textContent = selectedStyle.textContent;
+  }
+
+  async stageBlob(src, format) {
+    const image = new Image();
+    await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = reject; image.src = src; });
+    const canvas = document.createElement('canvas'); canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
+    const ctx = canvas.getContext('2d');
+    if (format === 'jpeg') { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+    ctx.drawImage(image, 0, 0);
+    if (format === 'svg') {
+      const png = canvas.toDataURL('image/png');
+      return new Blob([`<svg xmlns="http://www.w3.org/2000/svg" width="${canvas.width}" height="${canvas.height}" viewBox="0 0 ${canvas.width} ${canvas.height}"><image href="${png}" width="100%" height="100%"/></svg>`], {type:'image/svg+xml'});
+    }
+    const mime = format === 'jpeg' ? 'image/jpeg' : format === 'webp' ? 'image/webp' : 'image/png';
+    return new Promise(resolve => canvas.toBlob(blob => resolve(blob || new Blob([], {type:mime})), mime, 0.92));
+  }
+
+  async downloadStage(src, format) {
+    if (!src) return;
+    try {
+      const blob = await this.stageBlob(src, format), url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = `boundarylab-stage-${Date.now()}.${format === 'jpeg' ? 'jpg' : format}`;
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (_) { toast('Could not prepare this stage image.'); }
+  }
+
+  async shareStage(src) {
+    if (!src) return;
+    try {
+      const blob = await this.stageBlob(src, 'png'), file = new File([blob], 'boundarylab-stage.png', {type:'image/png'});
+      if (navigator.share && (!navigator.canShare || navigator.canShare({files:[file]}))) await navigator.share({title:'BoundaryLab processing stage', files:[file]});
+      else if (navigator.clipboard && window.ClipboardItem) { await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]); toast('Stage image copied; paste it to share.'); }
+      else { await this.downloadStage(src, 'png'); toast('Stage saved so you can share it.'); }
+    } catch (e) { if (e.name !== 'AbortError') { await this.downloadStage(src, 'png'); toast('Stage saved so you can share it.'); } }
+  }
+
   /* ---------- controls ---------- */
   bind() {
     $$('[data-param]').forEach(el => {
@@ -154,6 +261,27 @@ class Studio {
 
     $$('[data-style]').forEach(b => b.addEventListener('click', () => this.setStyle(b.dataset.style)));
     this.setStyle('classic');
+    const pipeline = $('.pipeline');
+    if (pipeline) {
+      this.stageImgs.forEach(img => img.addEventListener('dblclick', () => this.openStage(img)));
+      pipeline.addEventListener('click', e => {
+        const download = e.target.closest('[data-stage-download]');
+        if (download) { const img = download.closest('.stage').querySelector('img'); this.downloadStage(img.dataset.stageSource || img.getAttribute('src'), download.dataset.stageDownload); }
+        const share = e.target.closest('[data-stage-share]');
+        if (share) { const img = share.closest('.stage').querySelector('img'); this.shareStage(img.dataset.stageSource || img.getAttribute('src')); }
+      });
+    }
+    const stageModal = $('#stageModal');
+    if (stageModal) {
+      stageModal.addEventListener('click', e => { if (e.target === stageModal || e.target.closest('[data-stage-modal-close]')) this.closeStage(); });
+      $('#stageModalImg').addEventListener('dblclick', () => this.closeStage());
+      stageModal.addEventListener('click', e => {
+        const download = e.target.closest('[data-modal-stage-download]');
+        if (download) this.downloadStage($('#stageModalImg').src, download.dataset.modalStageDownload);
+        if (e.target.closest('#stageModalShare')) this.shareStage($('#stageModalImg').src);
+      });
+      document.addEventListener('keydown', e => { if (e.key === 'Escape') this.closeStage(); });
+    }
     const stageSelect = $('#stageSelect');
     if (stageSelect) stageSelect.addEventListener('change', () => {
       $$('.stage').forEach((el, i) => { el.hidden = stageSelect.value !== 'all' && String(i) !== stageSelect.value; });
@@ -166,6 +294,7 @@ class Studio {
     on('#phoneCamBtn', () => this.usePhoneCamera());
     on('#pauseBtn', () => this.togglePause());
     on('#uploadBtn', () => $('#fileIn').click());
+    on('#clearUploadBtn', () => this.clearUploadedImage());
     on('#photoBtn', () => $('#photoIn').click());
     on('#shutter', () => this.capture());
     on('#saveBtn', () => this.capture());
@@ -246,7 +375,7 @@ class Studio {
       this.setStatus('Connected');
       this.sendParams();
       if (this.mode === 'phone') {
-        this.ws.send(JSON.stringify({ action: 'subscribe_phone' }));
+        this.ws.send(JSON.stringify({ action: 'subscribe_phone', dashboard: this.source }));
       }
     };
     this.ws.onclose = () => {
@@ -281,26 +410,57 @@ class Studio {
           return;
         }
 
+        if (d.event === 'phone_settings') {
+          this.applyPhoneSettings(d.params);
+          return;
+        }
+
         // Handle live phone camera frames arriving from server
+        if (d.event === 'phone_processed') {
+          if (d.out) this.lastPhoneOut = d.out;
+          if (d.out && this.processed && this.source === 'laptop') this.setPreviewImage(this.processed, d.out);
+          else if (d.out && this.out && this.source === 'phone') this.setPreviewImage(this.out, d.out);
+          if (d.gray && this.source === 'laptop' && $('#grayView')) {
+            const image = new Image();
+            image.onload = () => {
+              const gray = $('#grayView'); gray.width = image.naturalWidth; gray.height = image.naturalHeight;
+              gray.getContext('2d').drawImage(image, 0, 0); gray.hidden = false;
+            };
+            image.src = d.gray;
+          }
+          return;
+        }
+
         if (d.event === 'phone_frame') {
           if (d.src) this.lastPhoneSrc = d.src;
           if (d.out) this.lastPhoneOut = d.out;
           
           if ((this.mode === 'phone' || this.source === 'phone') && !this.paused) {
-            if (d.out && this.out) this.out.src = d.out;
+            if (d.out && this.out && this.source === 'phone') this.setPreviewImage(this.out, d.out);
             if (d.stages && Array.isArray(d.stages)) {
-              d.stages.forEach((u, i) => { if (this.stageImgs[i] && u) this.stageImgs[i].src = u; });
+              d.stages.forEach((u, i) => { if (this.stageImgs[i] && u) this.setPreviewImage(this.stageImgs[i], u); });
             }
             
             if (d.src) {
               const im = this.phoneImage || (this.phoneImage = new Image());
               im.onload = () => {
-                const w = d.w || 640, h = d.h || 360;
+                const w = im.naturalWidth || d.w || 640, h = im.naturalHeight || d.h || 360;
                 this.cap.width = w; this.cap.height = h;
-                this.cap.getContext('2d').drawImage(im, 0, 0);
+                this.cap.getContext('2d').drawImage(im, 0, 0, w, h);
                 if (this.view) {
                   this.view.width = w; this.view.height = h;
-                  this.view.getContext('2d').drawImage(im, 0, 0);
+                  this.view.getContext('2d').drawImage(im, 0, 0, w, h);
+                }
+                const gray = $('#grayView');
+                const output = $('#outImg');
+                if (gray && this.source === 'laptop') {
+                  gray.width = w; gray.height = h;
+                  const grayContext = gray.getContext('2d');
+                  grayContext.filter = 'grayscale(1)';
+                  grayContext.drawImage(im, 0, 0, w, h);
+                  grayContext.filter = 'none';
+                  gray.hidden = false;
+                  if (output) output.hidden = true;
                 }
                 this.hasFrame = true;
               };
@@ -322,9 +482,17 @@ class Studio {
         }
 
         // Standard local stream reply
-        if (d.out && this.out) this.out.src = d.out;
-        if (d.stages && Array.isArray(d.stages) && this.stageImgs[d.stage_index]) {
-          this.stageImgs[d.stage_index].src = d.stages[0];
+        if (d.out && this.processed && this.source === 'laptop') this.setPreviewImage(this.processed, d.out);
+        else if (d.out && this.out) this.setPreviewImage(this.out, d.out);
+        if (d.stages && Array.isArray(d.stages)) {
+          if (d.stages.length === this.stageImgs.length) {
+            d.stages.forEach((url, i) => {
+              if (!this.stageImgs[i] || !url) return;
+              this.setPreviewImage(this.stageImgs[i], url);
+            });
+          } else if (Number.isInteger(d.stage_index) && this.stageImgs[d.stage_index] && d.stages[0]) {
+            const img = this.stageImgs[d.stage_index]; this.setPreviewImage(img, d.stages[0]);
+          }
         }
         this.frames++;
         const now = performance.now();
@@ -348,7 +516,8 @@ class Studio {
   sendParams() {
     this.dirty = true;
     if (this.ws && this.ws.readyState === 1) {
-      this.ws.send(JSON.stringify({ ...this.params, stages: this.stageImgs.length > 0, stage_index: Number($('#stageSelect')?.value ?? -1), source: this.source }));
+      const selectedStage = $('#stageSelect')?.value ?? 'all';
+      this.ws.send(JSON.stringify({ ...this.params, stages: this.stageImgs.length > 0, all_stages: this.stageImgs.length > 0 && selectedStage === 'all', stage_index: selectedStage === 'all' ? -1 : Number(selectedStage), source: this.source }));
     }
   }
 
@@ -365,6 +534,14 @@ class Studio {
     if (this.view) {
       this.view.width = w; this.view.height = h;
       this.view.getContext('2d').drawImage(this.cap, 0, 0);
+    }
+    const gray = $('#grayView');
+    if (gray) {
+      gray.width = w; gray.height = h;
+      const grayContext = gray.getContext('2d');
+      grayContext.filter = 'grayscale(1)';
+      grayContext.drawImage(this.cap, 0, 0);
+      grayContext.filter = 'none';
     }
     this.hasFrame = true; return true;
   }
@@ -451,8 +628,8 @@ class Gallery {
     const item = this.items.find(i => i.id === btn.dataset.id); if (!item) return;
     if (btn.dataset.action === 'open') { window.open(item.png, '_blank', 'noopener'); return; }
     if (btn.dataset.action === 'edit') {
-      if (!window.studio) { toast('Open the command center to edit this capture.'); return; }
-      const blob = await fetch(item.source_image || item.png).then(r => r.blob()); window.studio.loadFile(new File([blob], 'gallery-capture.png', {type: blob.type}), {label:'Gallery capture'});
+      if (!window.studio) { toast('Open the Dashboard to edit this capture.'); return; }
+      const blob = await fetch(item.source_image || item.png).then(r => r.blob()); window.studio.loadFile(new File([blob], 'gallery-capture.png', {type: blob.type}), {label:'Gallery capture', galleryId:item.id});
       window.scrollTo({top:0,behavior:'smooth'}); toast('Capture opened in the editor'); return;
     }
     if (btn.dataset.action === 'share') {
@@ -461,7 +638,7 @@ class Gallery {
     }
     if (btn.dataset.action === 'delete') {
       const res = await fetch('/api/gallery/'+encodeURIComponent(item.id), {method:'DELETE'});
-      if (res.ok) { this.items=this.items.filter(i=>i.id!==item.id); this.render(); toast('Capture deleted'); } else toast('Could not delete capture');
+      if (res.ok) { this.items=this.items.filter(i=>i.id!==item.id); if (window.studio && window.studio.loadedGalleryId === item.id) window.studio.clearUploadedImage(); this.render(); toast('Capture deleted'); } else toast('Could not delete capture');
     }
   }
   render() {

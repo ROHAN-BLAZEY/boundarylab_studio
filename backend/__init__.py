@@ -1,1 +1,1 @@
-"""EdgeSeg Studio backend: OpenCV pipeline, procedural styles, SVG vectorizer."""
+"""BoundaryLab Studio backend: OpenCV pipeline, procedural styles, SVG vectorizer."""

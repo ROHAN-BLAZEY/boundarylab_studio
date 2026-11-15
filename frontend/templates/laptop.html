@@ -1,28 +1,30 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Command center · EdgeSeg Studio</title>
+<meta name="theme-color" content="#101715"><link rel="manifest" href="/manifest.webmanifest">
+<title>Dashboard · BoundaryLab Studio</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/css/style.css">
+<link rel="stylesheet" href="/static/css/style.css?v=20261115-2">
 </head>
 <body data-studio="laptop"><div class="page">
-<nav class="nav"><a class="brand" href="/"><span class="brand__mark"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E9C46A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17c3-9 6-9 8-4s5 3 8-6"/></svg></span>EdgeSeg Studio</a>
-<div class="nav__links"><a href="/laptop" aria-current="page">Command center</a><a href="/mobile" >Phone</a></div></nav>
+<nav class="nav"><a class="brand" href="/"><span class="brand__mark"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E9C46A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17c3-9 6-9 8-4s5 3 8-6"/></svg></span>BoundaryLab Studio</a>
+<div class="nav__links"><a href="/laptop" aria-current="page">Dashboard</a><a href="/mobile" >Phone</a>{% if user_role == 'admin' %}<a href="/admin">Admin</a>{% endif %}{% if auth_enabled %}<form method="post" action="/logout"><button class="nav-signout" type="submit">Sign out</button></form>{% endif %}</div></nav>
 <div class="console">
   <div class="console__bar">
-    <h2>Command center</h2>
+    <h2>Dashboard</h2>
     <span class="chip"><b id="fps">0</b> fps</span><span class="chip" id="status">Connecting</span><span class="chip" id="srcName">Sample video</span>
     <button class="btn btn--ghost" id="pauseBtn" aria-pressed="false">Pause video</button>
     <button class="btn btn--ghost" id="sampleBtn" data-src="video" aria-pressed="true">Sample video</button>
-    <button class="btn btn--ghost" id="uploadBtn">Upload</button>
+    <button class="btn btn--ghost" id="uploadBtn">Upload</button><button class="btn btn--ghost" id="clearUploadBtn" hidden>Clear image</button>
     <button class="btn btn--ghost" id="phoneCamBtn" data-src="phone" aria-pressed="false">📱 Phone camera <span class="dot" id="laptopPhoneDot"></span></button>
     <button class="btn btn--ghost" id="qrBtn" title="Connect wireless phone camera">Connect Phone</button>
     <button class="btn" id="camBtn" data-src="camera" aria-pressed="false">Start camera</button>
   </div>
   <div class="panes">
-    <div class="pane"><canvas id="srcView" width="640" height="360"></canvas><span class="pane__tag">Source in grayscale</span></div>
-    <div class="pane"><img id="outImg" alt="Edge segmentation output"><span class="pane__tag" id="styleName">Classic outline</span></div>
+    <div class="pane"><canvas id="srcView" width="640" height="360"></canvas><span class="pane__tag" id="srcTag">Source &middot; Color</span></div>
+    <div class="pane"><img id="outImg" alt="Edge segmentation output" hidden><canvas id="grayView"></canvas><span class="pane__tag" id="resultTag">Source - Grayscale</span></div>
+    <div class="pane pane--processed"><img id="processedImg" alt="Live processed image" hidden><div class="pane__empty" id="processedEmpty">Processed output appears here when a source is active</div><span class="pane__tag" id="processedTag">Processed outline</span></div>
   </div>
   <div class="split">
     <div class="panel"><h3>Processing controls</h3>
@@ -33,7 +35,7 @@
       <label class="field"><span>Contrast method</span><select data-param="contrast_method"><option value="percentile">Auto levels</option><option value="histogram">Histogram equalization</option><option value="none">Off</option></select></label>
       <label class="field"><span>Edge method</span><select data-param="edge_method"><option value="canny">Canny</option><option value="sobel">Sobel</option><option value="laplacian">Laplacian</option><option value="threshold">Adaptive threshold</option></select></label>
       <label class="field"><span>Morphology</span><select data-param="morphology"><option value="none">Off</option><option value="open">Open (remove noise)</option><option value="close">Close (join gaps)</option></select></label>
-      <label class="field"><span>Rotation</span><input type="range" data-param="rotation" min="0" max="100" step="1"><output></output></label>
+      <label class="field"><span>Rotation</span><input type="range" data-param="rotation" min="0" max="360" step="1"><output></output></label>
       <label class="field"><span>Clean-up</span><input type="range" data-param="cleanup" min="0" max="60"><output></output></label>
       <label class="field"><span>Line weight</span><input type="range" data-param="thickness" min="1" max="3"><output></output></label>
       <label class="field"><span>Auto contrast</span><input type="checkbox" data-param="auto_contrast"></label>
@@ -46,14 +48,14 @@
     <div class="panel"><h3>Under the hood</h3>
       <label class="field"><span>Inspect stage</span><select id="stageSelect"><option value="all">All stages</option><option value="0">Grayscale</option><option value="1">Contrast</option><option value="2">Smoothing</option><option value="3">Sobel gradient</option><option value="4">Threshold</option><option value="5">Edge map</option><option value="6">Morphology</option><option value="7">Contours</option></select></label>
       <div class="pipeline">
-      <div class="stage"><img alt="Grayscale stage"><b>Grayscale</b><span>Convert colour to intensity values</span></div>
-      <div class="stage"><img alt="Contrast stage"><b>Contrast</b><span>Auto levels or histogram equalization</span></div>
-      <div class="stage"><img alt="Smoothing stage"><b>Smoothing</b><span>Bilateral, Gaussian, median, or off</span></div>
-      <div class="stage"><img alt="Sobel gradient stage"><b>Sobel gradient</b><span>Measure brightness changes in X and Y</span></div>
-      <div class="stage"><img alt="Threshold stage"><b>Threshold</b><span>Separate foreground and background</span></div>
-      <div class="stage"><img alt="Edge map stage"><b>Edge map</b><span>Canny, Sobel, Laplacian, or adaptive</span></div>
-      <div class="stage"><img alt="Morphology stage"><b>Morphology</b><span>Open or close small gaps in edges</span></div>
-      <div class="stage"><img alt="Contours stage"><b>Contours</b><span>Trace connected boundary curves</span></div></div></div> </div>
+      <div class="stage" data-stage-index="0"><img hidden alt="Grayscale stage"><b>Grayscale</b><span>Convert colour to intensity values</span><div class="stage__actions"><details class="download-menu stage-download"><summary>Download</summary><div class="download-menu__popup"><button type="button" data-stage-download="png">PNG</button><button type="button" data-stage-download="jpeg">JPEG</button><button type="button" data-stage-download="webp">WebP</button><button type="button" data-stage-download="svg">SVG</button></div></details><button type="button" data-stage-share>Share</button></div></div>
+      <div class="stage" data-stage-index="1"><img hidden alt="Contrast stage"><b>Contrast</b><span>Auto levels or histogram equalization</span><div class="stage__actions"><details class="download-menu stage-download"><summary>Download</summary><div class="download-menu__popup"><button type="button" data-stage-download="png">PNG</button><button type="button" data-stage-download="jpeg">JPEG</button><button type="button" data-stage-download="webp">WebP</button><button type="button" data-stage-download="svg">SVG</button></div></details><button type="button" data-stage-share>Share</button></div></div>
+      <div class="stage" data-stage-index="2"><img hidden alt="Smoothing stage"><b>Smoothing</b><span>Bilateral, Gaussian, median, or off</span><div class="stage__actions"><details class="download-menu stage-download"><summary>Download</summary><div class="download-menu__popup"><button type="button" data-stage-download="png">PNG</button><button type="button" data-stage-download="jpeg">JPEG</button><button type="button" data-stage-download="webp">WebP</button><button type="button" data-stage-download="svg">SVG</button></div></details><button type="button" data-stage-share>Share</button></div></div>
+      <div class="stage" data-stage-index="3"><img hidden alt="Sobel gradient stage"><b>Sobel gradient</b><span>Measure brightness changes in X and Y</span><div class="stage__actions"><details class="download-menu stage-download"><summary>Download</summary><div class="download-menu__popup"><button type="button" data-stage-download="png">PNG</button><button type="button" data-stage-download="jpeg">JPEG</button><button type="button" data-stage-download="webp">WebP</button><button type="button" data-stage-download="svg">SVG</button></div></details><button type="button" data-stage-share>Share</button></div></div>
+      <div class="stage" data-stage-index="4"><img hidden alt="Threshold stage"><b>Threshold</b><span>Separate foreground and background</span><div class="stage__actions"><details class="download-menu stage-download"><summary>Download</summary><div class="download-menu__popup"><button type="button" data-stage-download="png">PNG</button><button type="button" data-stage-download="jpeg">JPEG</button><button type="button" data-stage-download="webp">WebP</button><button type="button" data-stage-download="svg">SVG</button></div></details><button type="button" data-stage-share>Share</button></div></div>
+      <div class="stage" data-stage-index="5"><img hidden alt="Edge map stage"><b>Edge map</b><span>Canny, Sobel, Laplacian, or adaptive</span><div class="stage__actions"><details class="download-menu stage-download"><summary>Download</summary><div class="download-menu__popup"><button type="button" data-stage-download="png">PNG</button><button type="button" data-stage-download="jpeg">JPEG</button><button type="button" data-stage-download="webp">WebP</button><button type="button" data-stage-download="svg">SVG</button></div></details><button type="button" data-stage-share>Share</button></div></div>
+      <div class="stage" data-stage-index="6"><img hidden alt="Morphology stage"><b>Morphology</b><span>Open or close small gaps in edges</span><div class="stage__actions"><details class="download-menu stage-download"><summary>Download</summary><div class="download-menu__popup"><button type="button" data-stage-download="png">PNG</button><button type="button" data-stage-download="jpeg">JPEG</button><button type="button" data-stage-download="webp">WebP</button><button type="button" data-stage-download="svg">SVG</button></div></details><button type="button" data-stage-share>Share</button></div></div>
+      <div class="stage" data-stage-index="7"><img hidden alt="Contours stage"><b>Contours</b><span>Trace connected boundary curves</span><div class="stage__actions"><details class="download-menu stage-download"><summary>Download</summary><div class="download-menu__popup"><button type="button" data-stage-download="png">PNG</button><button type="button" data-stage-download="jpeg">JPEG</button><button type="button" data-stage-download="webp">WebP</button><button type="button" data-stage-download="svg">SVG</button></div></details><button type="button" data-stage-share>Share</button></div></div></div></div> </div>
   <div class="exportbar"><p>Export the current frame as vector paths for Figma, Illustrator or a plotter. Pause first to export an exact frame.</p>
     <div class="actions"><button class="btn btn--ghost" id="saveBtn">Save to gallery</button><button class="btn" id="svgBtn">Export SVG</button></div></div>
 </div>
@@ -84,6 +86,7 @@
   </div>
 </div>
 
+<div class="modal-backdrop stage-modal" id="stageModal" role="dialog" aria-modal="true" aria-label="Processing stage preview"><div class="modal-box stage-modal__box"><button class="modal-close" data-stage-modal-close aria-label="Close stage">&times;</button><h3 id="stageModalTitle">Processing stage</h3><p>Double-click the image to close it.</p><img id="stageModalImg" alt="Expanded processing stage"><div class="stage-modal__actions"><details class="download-menu"><summary>Download</summary><div class="download-menu__popup"><button type="button" data-modal-stage-download="png">PNG</button><button type="button" data-modal-stage-download="jpeg">JPEG</button><button type="button" data-modal-stage-download="webp">WebP</button><button type="button" data-modal-stage-download="svg">SVG</button></div></details><button class="btn btn--forest btn--sm" id="stageModalShare">Share</button></div></div></div>
 <video id="vid" muted loop playsinline style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"></video>
 <input type="file" id="fileIn" accept="video/*,image/*" hidden><div class="toast" id="toast" role="status"></div>
-<script src="/static/js/client.js"></script></body></html>
+<script src="/static/js/client.js?v=20261115-3"></script></body></html>
